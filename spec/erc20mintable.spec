@@ -269,59 +269,6 @@ invariant ZeroAddressNoBalance()
     @Rule
 
     @Description:
-        Contract calls don't change token total supply.
-
-    @Formula:
-        {
-            supplyBefore = totalSupply()
-        }
-        < f(e, args)>
-        {
-            supplyAfter = totalSupply()
-            supplyBefore == supplyAfter
-        }
-
-    @Notes:
-        This rule should fail for any token that has functions that change totalSupply(), like mint() and burn().
-        It's still important to run the rule and see if it fails in functions that _aren't_ supposed to modify totalSupply()
-
-    @Link:
-
-*/
-rule NoChangeTotalSupply(method f) {
-    // require f.selector != burn(uint256).selector && f.selector != mint(address, uint256).selector;
-    uint256 totalSupplyBefore = totalSupply();
-    env e;
-    calldataarg args;
-    f(e, args);
-    assert totalSupply() == totalSupplyBefore;
-}
-
-/*
- The two rules cover the same ground as NoChangeTotalSupply.
- 
- The split into two rules is in order to make the burn/mint features of a tested token even more obvious
-*/
-rule noBurningTokens(method f) {
-    uint256 totalSupplyBefore = totalSupply();
-    env e;
-    calldataarg args;
-    f(e, args);
-    assert totalSupply() >= totalSupplyBefore;
-}
-
-rule noMintingTokens(method f) {
-    uint256 totalSupplyBefore = totalSupply();
-    env e;
-    calldataarg args;
-    f(e, args);
-    assert totalSupply() <= totalSupplyBefore;
-}
-
-/*
-    @Rule
-
-    @Description:
         Allowance changes correctly as a result of calls to approve, transfer, increaseAllowance, decreaseAllowance
 
     @Formula:
@@ -599,6 +546,7 @@ rule isMintPrivileged(address privileged, address recipient, uint256 amount) {
     uint256 totalSupplyBefore = totalSupply();
 	mint(e1, recipient, amount); // no revert
 	uint256 totalSupplyAfter1 = totalSupply();
+    require(totalSupplyAfter1 > totalSupplyBefore);
 
 	env e2;
 	require e2.msg.sender != privileged;
@@ -607,7 +555,5 @@ rule isMintPrivileged(address privileged, address recipient, uint256 amount) {
     uint256 totalSupplyAfter2 = totalSupply();
 
     // either non privileged mint reverted or it didn't influence total supply
-	// assert  !secondSucceeded || (totalSupplyAfter1 == totalSupplyAfter2);
-    assert !secondSucceeded;
-
+	assert  !secondSucceeded || (totalSupplyBefore == totalSupplyAfter2);
 }

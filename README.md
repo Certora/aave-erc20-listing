@@ -9,9 +9,9 @@ With ERC20 tokens there are not many general rules. Tokens have different proper
 have fixed supply, while others are mintable. Some major ERC20 tokens have a blacklist features(USDC, USDT), some
 tokens have a potential transfer tax (USDT), some can be paused by an admin.
 
-The specs contain rules to detect supply changes, pause on transfers and transfer tax, among others. Since these can be potential token features and not bugs, the counterexamples that the Certora prover finds when running this spec should be seen, first and foremost ,as information about the tested token, not as a violation or a bug. The idea is that testing the token code against the spec provides knowledge and richer details to the community, so that it can take a better decision re: listing the token.
+The specs contain rules to detect supply changes, pause on transfers and transfer tax, among others. Since these can be potential token features and not bugs, the counterexamples that the Certora prover finds when running this spec should be seen, first and foremost ,as information about the tested token, not as a standard violation or a bug. The idea is that testing the token code against the spec provides knowledge and richer details to the community, so that it can take a better informed decision about the asset.
 
-For example, if we know that the tested token is mintable, it will obviously violate the noMintingTokens rule. Looking at the trace call will help us see that the "violation" (increasing total supply) happens in the mint() function - this is the token working as it should. On the other hand, if we see that the violation takes place in an approve() function, then this maybe a potential bug. The point is to understand each counterexample.
+For example, if we know that the tested token is mintable, it will obviously violate the noMintingTokens rule. Looking at the trace call will help us see that the "violation" (increasing total supply) happens in the mint() function - this is the token working as it should. On the other hand, if we see that the violation takes place in an approve() function, then this might be a potential bug. The point is to understand each counterexample and see if it complies with the token's desired behavior.
 
 ## Specs
 
