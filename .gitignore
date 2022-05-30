@@ -1,0 +1,34 @@
+# Ignore node stuff
+node_modules/
+yarn-error.log
+
+.DS_Store
+.vscode
+
+# Build files
+artifacts/
+build/
+cache/
+dist/
+deployments/hardhat
+deployments/*/artifacts
+deployments/*/cache
+deployments/*/contracts
+deployments/*/aliases.json
+deployments/*/pointers.json
+deployments/*/proxies.json
+
+.env
+coverage/
+coverage.json
+typechain/
+
+test-results.json
+scenario-results.json
+
+# certora
+.certora*
+.certora*.json
+**.last_conf*
+certora-logs
+resource_errors.json
