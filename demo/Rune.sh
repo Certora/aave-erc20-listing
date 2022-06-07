@@ -1,5 +1,5 @@
 certoraRun demo/Rune.sol:ETH_RUNE  \
-    --verify ETH_RUNE:spec/erc20.spec $RULE  \
+    --verify ETH_RUNE:spec/erc20mintable.spec $RULE  \
     --solc solc8.0 \
     --staging \
     --send_only \

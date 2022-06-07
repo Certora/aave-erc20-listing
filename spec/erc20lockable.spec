@@ -18,15 +18,16 @@ methods {
     totalSupply()                         returns (uint256)   envfree
     balanceOf(address)                    returns (uint256)   envfree
     allowance(address,address)            returns (uint256)   envfree
+    walletAddress()                       returns (address)   envfree
     increaseAllowance(address, uint256)
     decreaseAllowance(address, uint256)
     transfer(address,uint256)
     transferFrom(address,address,uint256)
     mint(address,uint256)
     burn(uint256)
-    burn(address,uint256)
     burnFrom(address,uint256)
     initialize(address)
+    enableTokenTransfer()
 }
 
 function doesntChangeBalance(method f) returns bool {
@@ -34,7 +35,6 @@ function doesntChangeBalance(method f) returns bool {
         f.selector != transferFrom(address,address,uint256).selector &&
         f.selector != mint(address,uint256).selector &&
         f.selector != burn(uint256).selector &&
-        f.selector != burn(address,uint256).selector &&
         f.selector != burnFrom(address,uint256).selector &&
         f.selector != initialize(address).selector;
 }
@@ -574,14 +574,11 @@ rule OtherBalanceOnlyGoesUp(address other, method f) {
     assert balanceOf(other) >= balanceBefore;
 }
 
-rule noRebasing(method f, address alice) {
+rule enableTokenTransferCorrectness() {
     env e;
-    calldataarg args;
+    address wallet = walletAddress();
+    enableTokenTransfer@withrevert(e);
+    bool reverted = lastReverted;
 
-    require doesntChangeBalance(f);
-    
-    uint256 balanceBefore = balanceOf(alice);
-    f(e, args);
-    uint256 balanceAfter = balanceOf(alice);
-    assert balanceBefore == balanceAfter;
+    assert lastReverted <=> wallet != e.msg.sender;
 }
