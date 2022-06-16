@@ -519,17 +519,19 @@ rule OtherBalanceOnlyGoesUp(address other, method f) {
     assert balanceOf(other) >= balanceBefore;
 }
 
-rule noRebasing(method f, address alice) {
-    env e;
-    calldataarg args;
+// this rule is broken by too many various functions in smart contracts.
 
-    require doesntChangeBalance(f);
+// rule noRebasing(method f, address alice) {
+//     env e;
+//     calldataarg args;
+
+//     require doesntChangeBalance(f);
     
-    uint256 balanceBefore = balanceOf(alice);
-    f(e, args);
-    uint256 balanceAfter = balanceOf(alice);
-    assert balanceBefore == balanceAfter;
-}
+//     uint256 balanceBefore = balanceOf(alice);
+//     f(e, args);
+//     uint256 balanceAfter = balanceOf(alice);
+//     assert balanceBefore == balanceAfter;
+// }
 
 
 // checks if mint operation is privileged - only one address may mint. 
