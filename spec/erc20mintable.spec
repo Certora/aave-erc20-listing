@@ -144,7 +144,7 @@ rule noFeeOnTransfer(address bob, uint256 amount) {
 */
 rule transferCorrect(address to, uint256 amount) {
     env e;
-    require e.msg.value == 0 && e.msg.sender != 0;
+    require e.msg.value == 0 && e.msg.sender != 0 && e.msg.sender != currentContract;
     uint256 fromBalanceBefore = balanceOf(e.msg.sender);
     uint256 toBalanceBefore = balanceOf(to);
     require fromBalanceBefore + toBalanceBefore <= max_uint256;
