@@ -25,4 +25,4 @@ supply (can be minted/burned), when they're pausable by the admin and when they 
 | OP   | Optimism   |                                                | [OP run](https://vaas-stg.certora.com/output/67509/991533bed55dbb84f497/?anonymousKey=9aa810fe62576f920a1b2c900f96ac1c10b8352f)   | 1\. burnFrom() function might change a user's balance
 ## Next Tokens
 
-- OP (Optimism)
+- [x] OP (Optimism) 
