@@ -22,8 +22,7 @@ supply (can be minted/burned), when they're pausable by the admin and when they 
 | MAI   | Polygon   | [MAI proposal](https://governance.aave.com/t/add-mai-on-aave-v3/7630/24)                                                | [MAI run](https://prover.certora.com/output/67509/69e0516d38f1e2a98b1a/?anonymousKey=d1ecafe9ea2b57d2b1444ccc39d02e03d5e4929f)   | 1\. Token is mintable<br>2\. Token has a burn() function - admin may burn tokens of any address                                                     |
 | StMATIC   | Polygon   | [StMATIC proposal](https://governance.aave.com/t/proposal-add-support-for-stmatic-lido/7677/19)                                                | [StMATIC run](https://prover.certora.com/output/67509/b3a3ca8ea836a40f42c2/?anonymousKey=5026ff1e21dfc50bf002306668e5caf27258a892)   | 1\. Token is mintable
 | sUSD   | Optimism   | [sUSD proposal](https://governance.aave.com/t/arc-enable-susd-as-collateral-on-aave-v3-on-optimism/7912/10)                                                | [sUSD run](https://prover.certora.com/output/67509/a2a08fcb0d3a2e2bc8ec/?anonymousKey=c45d6312f9e8065ce2cf74c72c104e5f5a794618)   | 1\. Total supply can be modified by (Synthetix) system contracts<br>2\. Max allowance is never decreased on spending, non-standard behavior.<br>3\. User balance might decrease as a result of a call to burn() - which is callable by system contracts.<br>4\. Zero address might receive a balance as a result of issue() - callable by system contracts
-
-
+| OP   | Optimism   |                                                | [OP run](https://vaas-stg.certora.com/output/67509/991533bed55dbb84f497/?anonymousKey=9aa810fe62576f920a1b2c900f96ac1c10b8352f)   | 1\. burnFrom() function might change a user's balance
 ## Next Tokens
 
 - OP (Optimism)

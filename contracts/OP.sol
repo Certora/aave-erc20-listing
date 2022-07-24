@@ -1880,3 +1880,11 @@ contract GovernanceToken is ERC20Burnable, ERC20Votes, Ownable {
         super._burn(account, amount);
     }
 }
+
+/**
+
+transferCorrect: fails when the block number is above max_uint32
+transferFromCorrect: fails because max allowance is not decreased
+transferFromReverts: fails when the block number is above max_uint32
+
+ */
