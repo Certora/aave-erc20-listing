@@ -22,7 +22,7 @@ methods {
     decreaseAllowance(address, uint256)
     transfer(address,uint256)
     transferFrom(address,address,uint256)
-    mint(address,uint256)
+    mint(address,uint256,address,uint256,bytes32,uint256)
     burn(uint256)
     burnFrom(address,uint256)
     initialize(address)
@@ -31,7 +31,7 @@ methods {
 function doesntChangeBalance(method f) returns bool {
     return f.selector != transfer(address,uint256).selector &&
         f.selector != transferFrom(address,address,uint256).selector &&
-        f.selector != mint(address,uint256).selector &&
+        f.selector != mint(address,uint256,address,uint256,bytes32,uint256).selector &&
         f.selector != burn(uint256).selector &&
         f.selector != burnFrom(address,uint256).selector &&
         f.selector != initialize(address).selector;
@@ -546,13 +546,13 @@ rule isMintPrivileged(address privileged, address recipient, uint256 amount) {
 
 	storage initialStorage = lastStorage;
     uint256 totalSupplyBefore = totalSupply();
-	mint(e1, recipient, amount); // no revert
+	mint(e1, recipient, amount, 0, 0, 0, 0); // no revert
 	uint256 totalSupplyAfter1 = totalSupply();
     require(totalSupplyAfter1 > totalSupplyBefore);
 
 	env e2;
 	require e2.msg.sender != privileged;
-	mint@withrevert(e2, recipient, amount) at initialStorage;
+	mint@withrevert(e2, recipient, amount, 0, 0, 0, 0) at initialStorage;
 	bool secondSucceeded = !lastReverted;
     uint256 totalSupplyAfter2 = totalSupply();
 
