@@ -58,8 +58,9 @@ rule transferRevert {
 	uint256 balance_sender_before = balanceOf@withrevert(e, e.msg.sender);
     assert !lastReverted, "balanceOf reverted";
 
-    // Need to require here something like ERC20 != e.msg.sender.
-    // ERC20 is an address where the contract is deployed, probably.
+    // Need to require here something like ERC20 != e.msg.sender?  First, I
+    // don't know what that means, and second, I don't know what's wrong with
+    // that.  ERC20 is an address where the contract is deployed, probably.
     // What is this in e?
 
 	require (recipient != 0);
