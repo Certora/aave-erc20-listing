@@ -4,7 +4,7 @@ import "./IERC20.sol";
 
 contract ERC20Helper {
 
-    function tokenBalanceOf(address token, address user) public returns (uint256) {
+    function tokenBalanceOf(address token, address user) public view returns (uint256) {
             return IERC20(token).balanceOf(user);
     }
 }
