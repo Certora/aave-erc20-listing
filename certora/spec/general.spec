@@ -236,5 +236,32 @@ rule decreaseAllowanceWorks() {
 	}
 }
 
+rule transferReducesAllowance() {
+	env e;
+	address spender = e.msg.sender;
+	address owner;
+	address recepient;
+
+	uint256 allowedBefore = allowance(e, owner, spender);
+	uint256 transfered;
+
+	transferFrom(e, owner, recepient, transfered);
+	uint256 allowedAfter = allowance(e, owner, spender);
+	assert allowedBefore == assert_uint256(allowedAfter + transfered);
+
+}
+
+rule approveSetsAllowance() {
+	env e;
+	address spender;
+	address owner = e.msg.sender;
+	uint amount;
+
+	approve(e, spender, amount);
+	uint256 allowed = allowance(e, owner, spender);
+	assert allowed == amount;
+
+}
+
 
 
