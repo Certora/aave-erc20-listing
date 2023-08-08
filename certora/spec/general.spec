@@ -31,6 +31,10 @@ rule reachability(method f)
 */  
 definition nonReveritngFunction(method f ) returns bool = true; 
 
+definition priveledgedFunction(method f ) returns bool = 
+	f.selector == sig:mint(address,uint256).selector || 
+	f.selector == sig:burn(address,uint256).selector;
+
 rule noRevert(method f) filtered {f -> nonReveritngFunction(f) }
 {
 	env e;
@@ -73,7 +77,7 @@ rule simpleFrontRunning(method f, method g) filtered { f-> !f.isView, g-> !g.isV
     @dev The rules finds this by finding which functions can be called by two different users.
 */
 
-rule privilegedOperation(method f, address privileged)
+rule privilegedOperation(method f, address privileged) filtered {f -> priveledgedFunction(f) }
 {
 	env e1;
 	calldataarg arg;
@@ -120,3 +124,117 @@ rule decreaseInERC20(method f) {
     assert after >= before ||  false ; /* fill in cases eth can decrease */ 
 
 } 
+
+rule transferKeepsTotalSupply() {
+	address to;
+	uint256 amount;
+	env e;
+    
+	uint256 before = totalSupply(e);
+	transfer(e, to, amount);
+    uint256 after = totalSupply(e);
+    assert after == before;
+}
+
+rule transferDecreasesBalanceOfSender() {
+	env e;
+	address from = e.msg.sender;
+	address to;
+	uint256 amount;
+	
+	uint256 before = balanceOf(e, from);
+	transfer(e, to, amount);
+    uint256 after = balanceOf(e, from);
+    assert after <= before, "transfer didn't decrease balance of sender";
+}
+
+rule transferIncreasesBalanceOfReceiver() {
+	env e;
+	address to;
+	uint256 amount;
+	
+	uint256 before = balanceOf(e, to);
+	transfer(e, to, amount);
+    uint256 after = balanceOf(e, to);
+    assert after >= before, "transfer didn't increase balance of receiver";
+}
+
+rule transferExceedingAllowanceDoesntPass() {
+	env e1;
+	address owner = e1.msg.sender;
+	
+	env e2;
+	address spender = e2.msg.sender;
+	address recepient;
+
+	uint256 allowed;
+	uint256 transfered;
+	
+	require transfered > allowed;
+	approve(e1, spender, allowed);
+	if (!lastReverted) {
+		transferFrom@withrevert(e2, owner, recepient, transfered);
+		assert lastReverted;
+	}
+	else {
+		assert true;
+	}
+}
+
+rule burnReducesTotalSupply() {
+	env e;
+	address addr;
+	uint256 amount;
+	require amount > 0;
+	
+	uint256 before = totalSupply(e);
+	burn(e, addr, amount);
+    uint256 after = totalSupply(e);
+    assert after < before;
+}
+
+rule mintIncreasesTotalSupply() {
+	env e;
+	address addr;
+	uint256 amount;
+	require amount > 0;
+	
+	uint256 before = totalSupply(e);
+	mint(e, addr, amount);
+    uint256 after = totalSupply(e);
+    assert after > before;
+}
+
+rule decreaseAllowanceWorks() {
+	env e1;
+	address owner = e1.msg.sender;
+	
+	env e2;
+	address spender = e2.msg.sender;
+	address recepient;
+
+	uint256 allowedBefore = allowance(e1, owner, spender);
+	uint256 subtractedValue;
+		
+	require allowedBefore > 1 && subtractedValue > 0 && subtractedValue < allowedBefore;
+	mathint newAllowance = allowedBefore - subtractedValue;
+	
+	uint256 transfered;
+	require transfered <= allowedBefore && assert_uint256(newAllowance) < transfered;
+	storage initialStorage = lastStorage;
+
+	transferFrom@withrevert(e2, owner, recepient, transfered);
+	bool firstTransferSucceeded = !lastReverted;
+
+	decreaseAllowance@withrevert(e1, spender, subtractedValue);
+	if (firstTransferSucceeded && !lastReverted) {
+		transferFrom@withrevert(e2, owner, recepient, transfered) at initialStorage;
+		assert lastReverted;
+	}
+	else {
+		assert true;
+	}
+}
+
+
+
