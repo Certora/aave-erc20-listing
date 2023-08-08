@@ -1,0 +1,1 @@
+certoraRun.py certora/conf/default.conf --server staging --prover_version master

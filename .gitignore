@@ -33,3 +33,4 @@ scenario-results.json
 certora-logs
 resource_errors.json
 .zip*txt
+emv-*/
