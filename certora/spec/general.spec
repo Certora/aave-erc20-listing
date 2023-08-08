@@ -12,7 +12,110 @@ methods {
     function _.transferFrom(address,address,uint256) external => DISPATCHER(true);
 
 	function erc20helper.tokenBalanceOf(address, address) external returns (uint256) envfree;
+
+	function _.mint(address,uint256) external => DISPATCHER(true);
+	function _.burn(address,uint256) external => DISPATCHER(true);
+	function _.owner() external => DISPATCHER(true);
+
 }
+
+ghost mathint sumOfBalances {
+	init_state axiom sumOfBalances == 0;
+}
+
+hook Sstore _balances[KEY address addr] uint256 new_balance (uint256 old_balance) STORAGE {
+	sumOfBalances = sumOfBalances + to_mathint(new_balance) - to_mathint(old_balance);
+}
+
+invariant somOfBalancesEqualsTotalSupply(env e)
+	sumOfBalances == to_mathint(totalSupply(e));
+
+
+/*
+	List of functions we assume are allowd to change the [totalSupply]
+*/
+
+definition canChangeTotalSupply(method f ) returns bool = 
+	f.selector == sig:mint(address,uint256).selector ||
+	f.selector == sig:burn(address,uint256).selector
+	;
+
+/*
+	Functions that are not not allowed to change the [totalSupply] (via [canChangeTotalSupply()])
+	do not change the total balance.
+*/
+rule totalSuppyDoesNotChange(method f) filtered {f -> !canChangeTotalSupply(f) } 
+{		
+	env e;
+	calldataarg args;
+
+	uint256 before = totalSupply(e);
+	f(e,args);
+    uint256 after = totalSupply(e);
+	assert before == after;
+}
+
+/*
+	Mint is one of the functions that can change the total balance (can it?). So, we check whether it does it correctly.
+*/
+rule mintIncreasesTheTotalBalanceCorrectly(address to, uint256 amount) {
+	env e;
+	
+	uint256 before = totalSupply(e); //Question: how does the type cast work here?
+	mint(e, to, amount);
+	uint256 after = totalSupply(e);
+	
+	assert assert_uint256(before + amount) == after; 
+}
+
+rule mintCanBeDoneOnAnyAddresWithAnyReasonableAmount(address to, uint256 amount) {
+	env e;
+
+	require e.msg.sender == _owner(e);
+	//we can, instead, require the invariant somOfBalancesEqualsTotalSupply here I suppose. But that might be a too strong requirement. 
+	require totalSupply(e) + amount < max_uint; 
+	require to != 0;
+	
+	mint@withrevert(e, to, amount);
+
+	assert !lastReverted;
+}
+
+/*
+	Burn is one of the functions that can change the total balance (can it?). So, we check whether it does it correctly.
+*/
+rule burnDecreasesTheTotalBalanceCorrectly(address from, uint256 amount) {
+	env e;
+	
+	uint256 before = totalSupply(e); 
+	burn(e, from, amount);
+	uint256 after = totalSupply(e);
+	
+	assert amount <= before; //just checking if the compiler (with safe math) handles underflows correctly
+	assert assert_uint256(before - amount) == after; 
+}
+
+rule burnCanBeDoneOnAnyAddresWithAnyReasonableAmount(address from, uint256 amount) {
+	env e;
+
+	require e.msg.sender == _owner(e);
+	require balanceOf(e, from) >= amount;
+	//we can, instead, require the invariant somOfBalancesEqualsTotalSupply here I suppose. But that might be a too strong requirement. 
+	require amount <= totalSupply(e); 
+	require from != 0;
+	
+	burn@withrevert(e, from, amount);
+
+	assert !lastReverted;
+}
+
+
+/*
+*
+*	THE ORIGINAL SPEC
+*
+*/
+
 
 /* 
 	Property: Find and show a path for each method.
