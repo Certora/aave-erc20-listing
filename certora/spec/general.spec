@@ -74,6 +74,7 @@ rule mintCanBeDoneOnAnyAddresWithAnyReasonableAmount(address to, uint256 amount)
 	require e.msg.sender == _owner(e);
 	//we can, instead, require the invariant somOfBalancesEqualsTotalSupply here I suppose. But that might be a too strong requirement. 
 	require totalSupply(e) + amount < max_uint; 
+	require balanceOf(e, to) + amount < max_uint;
 	require to != 0;
 	
 	mint@withrevert(e, to, amount);
