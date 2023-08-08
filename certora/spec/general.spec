@@ -29,8 +29,34 @@ rule reachability(method f)
 */  
 definition nonReveritngFunction(method f ) returns bool = true; 
 
+definition canIncreaseAllowance(method f ) returns bool = 
+	f.selector == sig:approve(address,uint256).selector || 
+	f.selector == sig:increaseAllowance(address,uint256).selector;
+
+definition canDecreaseAllowance(method f ) returns bool = 
+	f.selector == sig:approve(address,uint256).selector || 
+	f.selector == sig:decreaseAllowance(address,uint256).selector ||
+	f.selector == sig:transferFrom(address,address,uint256).selector;
+
+
+definition canIncreaseBalance(method f ) returns bool = 
+	f.selector == sig:mint(address,uint256).selector || 
+	f.selector == sig:transfer(address,uint256).selector ||
+	f.selector == sig:transferFrom(address,address,uint256).selector;
+
+definition canDecreaseBalance(method f ) returns bool = 
+	f.selector == sig:burn(address,uint256).selector || 
+	f.selector == sig:transfer(address,uint256).selector ||
+	f.selector == sig:transferFrom(address,address,uint256).selector;
+
 definition priveledgedFunction(method f ) returns bool = 
 	f.selector == sig:mint(address,uint256).selector || 
+	f.selector == sig:burn(address,uint256).selector;
+
+definition canIncreaseTotalSupply(method f ) returns bool = 
+	f.selector == sig:mint(address,uint256).selector;
+
+definition canDecreaseTotalSupply(method f ) returns bool = 
 	f.selector == sig:burn(address,uint256).selector;
 
 rule noRevert(method f) filtered {f -> nonReveritngFunction(f) }
@@ -42,7 +68,6 @@ rule noRevert(method f) filtered {f -> nonReveritngFunction(f) }
 	f@withrevert(e, arg); 
 	assert !lastReverted, "method should not revert";
 }
-
 
 /* 
     Property: Checks if a function can be frontrun 
@@ -273,5 +298,39 @@ rule approveWorks() {
 
 }
 
+rule onlyAllowedMethodsMayChangeBalance(method f) {
+	env e;
+	address addr;
+	uint256 balanceBefore = balanceOf(addr);
+	calldataarg args;
+	f(e,args);
+	uint256 balanceAfter = balanceOf(addr);
+	assert balanceAfter > balanceBefore => canIncreaseBalance(f), "should not increase balance";
+	assert balanceAfter < balanceBefore => canDecreaseBalance(f), "should not decrease balance";
+}
+
+rule onlyAllowedMethodsMayChangeAllowance(method f) {
+	env e;
+	address addr1;
+	address addr2;
+	uint256 allowanceBefore = allowance(addr1, addr2);
+	calldataarg args;
+	f(e,args);
+	uint256 allowanceAfter = allowance(addr1, addr2);
+	assert allowanceAfter > allowanceBefore => canIncreaseAllowance(f), "should not increase allowance";
+	assert allowanceAfter < allowanceBefore => canDecreaseAllowance(f), "should not decrease allowance";
+
+}
+
+rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
+	env e;
+	uint256 totalSupplyBefore = totalSupply();
+	calldataarg args;
+	f(e,args);
+	uint256 totalSupplyAfter = totalSupply();
+	assert totalSupplyAfter > totalSupplyBefore => canIncreaseTotalSupply(f), "should not increase total supply";
+	assert totalSupplyAfter < totalSupplyBefore => canDecreaseTotalSupply(f), "should not decrease total supply";
+
+}
 
 
