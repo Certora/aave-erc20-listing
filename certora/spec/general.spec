@@ -1,15 +1,13 @@
 using ERC20Helper as erc20helper;
 
 methods {
-    function _.name() external => DISPATCHER(true);
-    function _.symbol() external => DISPATCHER(true);
-    function _.decimals() external => DISPATCHER(true);
-    function _.totalSupply() external => DISPATCHER(true);
-    function _.balanceOf(address) external => DISPATCHER(true);
-    function _.allowance(address,address) external => DISPATCHER(true);
-    function _.approve(address,uint256) external => DISPATCHER(true);
-    function _.transfer(address,uint256) external => DISPATCHER(true);
-    function _.transferFrom(address,address,uint256) external => DISPATCHER(true);
+    
+    function totalSupply() external returns uint256 envfree;
+    function balanceOf(address) external returns uint256 envfree;
+	function allowance(address,address) external returns uint256 envfree;
+    function approve(address,uint256) external returns bool;
+    function transfer(address,uint256) external returns bool;
+    function transferFrom(address,address,uint256) external returns bool;
 
 	function erc20helper.tokenBalanceOf(address, address) external returns (uint256) envfree;
 }
@@ -76,7 +74,6 @@ rule simpleFrontRunning(method f, method g) filtered { f-> !f.isView, g-> !g.isV
     @notice A function is privileged if there is only one address that can call it.
     @dev The rules finds this by finding which functions can be called by two different users.
 */
-
 rule privilegedOperation(method f, address privileged) filtered {f -> priveledgedFunction(f) }
 {
 	env e1;
@@ -130,9 +127,9 @@ rule transferKeepsTotalSupply() {
 	uint256 amount;
 	env e;
     
-	uint256 before = totalSupply(e);
+	uint256 before = totalSupply();
 	transfer(e, to, amount);
-    uint256 after = totalSupply(e);
+    uint256 after = totalSupply();
     assert after == before;
 }
 
@@ -142,10 +139,11 @@ rule transferDecreasesBalanceOfSender() {
 	address to;
 	uint256 amount;
 	
-	uint256 before = balanceOf(e, from);
+	require from != to;
+	uint256 before = balanceOf(from);
 	transfer(e, to, amount);
-    uint256 after = balanceOf(e, from);
-    assert after <= before, "transfer didn't decrease balance of sender";
+    uint256 after = balanceOf(from);
+    assert after == assert_uint256(before - amount) , "transfer didn't decrease balance of sender";
 }
 
 rule transferIncreasesBalanceOfReceiver() {
@@ -153,44 +151,36 @@ rule transferIncreasesBalanceOfReceiver() {
 	address to;
 	uint256 amount;
 	
-	uint256 before = balanceOf(e, to);
+	require to != e.msg.sender;
+	uint256 before = balanceOf(to);
 	transfer(e, to, amount);
-    uint256 after = balanceOf(e, to);
-    assert after >= before, "transfer didn't increase balance of receiver";
+    uint256 after = balanceOf(to);
+    assert after == assert_uint256(before + amount), "transfer didn't increase balance of receiver";
 }
 
 rule transferExceedingAllowanceDoesntPass() {
-	env e1;
-	address owner = e1.msg.sender;
-	
-	env e2;
-	address spender = e2.msg.sender;
+	address owner;
+	env e;
+	address spender = e.msg.sender;
 	address recepient;
 
-	uint256 allowed;
+	uint256 allowed = allowance(owner, spender);
 	uint256 transfered;
 	
 	require transfered > allowed;
-	approve(e1, spender, allowed);
-	if (!lastReverted) {
-		transferFrom@withrevert(e2, owner, recepient, transfered);
-		assert lastReverted;
-	}
-	else {
-		assert true;
-	}
+	transferFrom@withrevert(e, owner, recepient, transfered);
+	assert lastReverted;
 }
 
 rule burnReducesTotalSupply() {
 	env e;
 	address addr;
 	uint256 amount;
-	require amount > 0;
 	
-	uint256 before = totalSupply(e);
+	uint256 before = totalSupply();
 	burn(e, addr, amount);
-    uint256 after = totalSupply(e);
-    assert after < before;
+    uint256 after = totalSupply();
+    assert after == assert_uint256(before - amount);
 }
 
 rule mintIncreasesTotalSupply() {
@@ -199,41 +189,61 @@ rule mintIncreasesTotalSupply() {
 	uint256 amount;
 	require amount > 0;
 	
-	uint256 before = totalSupply(e);
+	uint256 before = totalSupply();
 	mint(e, addr, amount);
-    uint256 after = totalSupply(e);
-    assert after > before;
+    uint256 after = totalSupply();
+    assert after == assert_uint256(before + amount);
+}
+
+rule burnReducesBalance() {
+	env e;
+	address addr;
+	uint256 amount;
+	
+	uint256 before = balanceOf(addr);
+	burn(e, addr, amount);
+    uint256 after = balanceOf(addr);
+    assert after == assert_uint256(before - amount);
+}
+
+rule mintIncreasesBalance() {
+	env e;
+	address addr;
+	uint256 amount;
+	require amount > 0;
+	
+	uint256 before = balanceOf(addr);
+	mint(e, addr, amount);
+    uint256 after = balanceOf(addr);
+    assert after == assert_uint256(before + amount);
 }
 
 rule decreaseAllowanceWorks() {
-	env e1;
-	address owner = e1.msg.sender;
-	
-	env e2;
-	address spender = e2.msg.sender;
-	address recepient;
+	env e;
+	address owner = e.msg.sender;
+	address spender;
 
-	uint256 allowedBefore = allowance(e1, owner, spender);
+	uint256 allowedBefore = allowance(owner, spender);
 	uint256 subtractedValue;
 		
-	require allowedBefore > 1 && subtractedValue > 0 && subtractedValue < allowedBefore;
-	mathint newAllowance = allowedBefore - subtractedValue;
+	decreaseAllowance(e, spender, subtractedValue);
+	uint256 allowedAfter = allowance(owner, spender);
+	assert allowedAfter == assert_uint256(allowedBefore - subtractedValue);
 	
-	uint256 transfered;
-	require transfered <= allowedBefore && assert_uint256(newAllowance) < transfered;
-	storage initialStorage = lastStorage;
+}
 
-	transferFrom@withrevert(e2, owner, recepient, transfered);
-	bool firstTransferSucceeded = !lastReverted;
+rule increaseAllowanceWorks() {
+	env e;
+	address owner = e.msg.sender;
+	address spender;
 
-	decreaseAllowance@withrevert(e1, spender, subtractedValue);
-	if (firstTransferSucceeded && !lastReverted) {
-		transferFrom@withrevert(e2, owner, recepient, transfered) at initialStorage;
-		assert lastReverted;
-	}
-	else {
-		assert true;
-	}
+	uint256 allowedBefore = allowance(owner, spender);
+	uint256 addedValue;
+		
+	increaseAllowance(e, spender, addedValue);
+	uint256 allowedAfter = allowance(owner, spender);
+	assert allowedAfter == assert_uint256(allowedBefore + addedValue);
+	
 }
 
 rule transferReducesAllowance() {
@@ -242,23 +252,23 @@ rule transferReducesAllowance() {
 	address owner;
 	address recepient;
 
-	uint256 allowedBefore = allowance(e, owner, spender);
+	uint256 allowedBefore = allowance(owner, spender);
 	uint256 transfered;
 
 	transferFrom(e, owner, recepient, transfered);
-	uint256 allowedAfter = allowance(e, owner, spender);
+	uint256 allowedAfter = allowance(owner, spender);
 	assert allowedBefore == assert_uint256(allowedAfter + transfered);
 
 }
 
-rule approveSetsAllowance() {
+rule approveWorks() {
 	env e;
 	address spender;
 	address owner = e.msg.sender;
 	uint amount;
 
 	approve(e, spender, amount);
-	uint256 allowed = allowance(e, owner, spender);
+	uint256 allowed = allowance(owner, spender);
 	assert allowed == amount;
 
 }
