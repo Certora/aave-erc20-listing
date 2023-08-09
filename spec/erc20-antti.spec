@@ -185,3 +185,43 @@ rule onlyDeployerCanMint() {
     mint@withrevert(e, destination, amount);
     assert lastReverted, "nondeployer could mint";
 }
+
+// If something is transferred, allowance decreases by that amount
+rule allowanceDecreasesWithTransfer() {
+    address spender;
+    address receiver;
+    uint256 allowance;
+    uint256 amount;
+
+    require amount <= allowance;
+
+    require spender != 0;
+    require receiver != 0;
+
+    env e;
+    require e.msg.value == 0;
+
+    require e.msg.sender != 0;
+    approve@withrevert(e, spender, allowance);
+    assert !lastReverted, "approve reverted";
+
+    env e2;
+    require e2.msg.value == 0;
+
+    require e2.msg.sender == spender;
+
+    require totalSupply@withrevert(e) - amount >= 0;
+    assert !lastReverted, "totalSupply reverted";
+
+    require balanceOf(e, e.msg.sender) >= amount;
+
+    require balanceOf@withrevert(e, receiver) + amount <= to_mathint(totalSupply(e));
+    assert !lastReverted, "balanceOf reverted";
+
+    transferFrom@withrevert(e2, e.msg.sender, receiver, amount);
+    assert !lastReverted, "transfer reverted";
+
+    uint256 newAllowance = allowance@withrevert(e, e.msg.sender, spender);
+    assert !lastReverted, "allowance query reverted";
+    assert allowance - newAllowance == to_mathint(amount), "Incorrect allowance update";
+}
