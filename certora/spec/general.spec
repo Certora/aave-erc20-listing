@@ -6,6 +6,7 @@ methods {
     function balanceOf(address) external returns uint256 envfree;
 	function allowance(address,address) external returns uint256 envfree;
     function approve(address,uint256) external returns bool;
+	function increaseAllowance(address,uint256) external returns bool;
     function transfer(address,uint256) external returns bool;
     function transferFrom(address,address,uint256) external returns bool;
 
@@ -37,7 +38,6 @@ definition canDecreaseAllowance(method f ) returns bool =
 	f.selector == sig:approve(address,uint256).selector || 
 	f.selector == sig:decreaseAllowance(address,uint256).selector ||
 	f.selector == sig:transferFrom(address,address,uint256).selector;
-
 
 definition canIncreaseBalance(method f ) returns bool = 
 	f.selector == sig:mint(address,uint256).selector || 
@@ -93,7 +93,6 @@ rule simpleFrontRunning(method f, method g) filtered { f-> !f.isView, g-> !g.isV
 	assert succeeded, "should be called also if frontrunned";
 }
 
-
 /** 
     @title -   This rule find which functions are privileged.
     @notice A function is privileged if there is only one address that can call it.
@@ -118,7 +117,6 @@ rule privilegedOperation(method f, address privileged) filtered {f -> priveledge
 	assert  !(firstSucceeded && secondSucceeded), "function is privileged";
 }
 
-
 rule decreaseInSystemEth(method f) {
    
     uint256 before = nativeBalances[currentContract];
@@ -131,7 +129,6 @@ rule decreaseInSystemEth(method f) {
 
     assert after >= before ||  false ; /* fill in cases where eth can decrease */ 
 }
-
 
 rule decreaseInERC20(method f) {
     address token;
@@ -196,6 +193,8 @@ rule transferExceedingAllowanceDoesntPass() {
 	transferFrom@withrevert(e, owner, recepient, transfered);
 	assert lastReverted;
 }
+
+//transfer from udelat stejne kontroly jako transfer
 
 rule burnReducesTotalSupply() {
 	env e;
@@ -271,7 +270,8 @@ rule increaseAllowanceWorks() {
 	
 }
 
-rule transferReducesAllowance() {
+
+rule transferFromReducesAllowance() {
 	env e;
 	address spender = e.msg.sender;
 	address owner;
@@ -286,7 +286,7 @@ rule transferReducesAllowance() {
 
 }
 
-rule approveWorks() {
+rule approveSetsAllowance() {
 	env e;
 	address spender;
 	address owner = e.msg.sender;
@@ -295,7 +295,6 @@ rule approveWorks() {
 	approve(e, spender, amount);
 	uint256 allowed = allowance(owner, spender);
 	assert allowed == amount;
-
 }
 
 rule onlyAllowedMethodsMayChangeBalance(method f) {
@@ -333,4 +332,30 @@ rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
 
 }
 
+invariant balanceOfZeroIsZero()
+	balanceOf(0) == 0;
 
+ghost mathint sum_of_balances {
+	init_state axiom sum_of_balances == 0;
+}
+
+hook Sstore _balances[KEY address a] uint new_value (uint old_value) STORAGE {
+	sum_of_balances = sum_of_balances + new_value - old_value;
+	numberOfChangesOfBalances = numberOfChangesOfBalances + 1;
+}
+
+invariant totalSupplyIsSumOfBalances()
+	to_mathint(totalSupply()) == sum_of_balances;
+
+ghost mathint numberOfChangesOfBalances {
+	init_state axiom numberOfChangesOfBalances == 0;
+}
+
+rule noMethodChangesMoreThanTwoBalances(method f) {
+	env e;
+	mathint numberOfChangesOfBalancesBefore = numberOfChangesOfBalances;
+	calldataarg args;
+	f(e,args);
+	mathint numberOfChangesOfBalancesAfter = numberOfChangesOfBalances;
+	assert numberOfChangesOfBalancesAfter <= numberOfChangesOfBalancesBefore + 2;
+}
