@@ -1,9 +1,9 @@
 using ERC20Helper as erc20helper;
-using ERC20 as E;
 
 methods {
     function _.name() external => DISPATCHER(true);
     function _.symbol() external => DISPATCHER(true);
+    function _owner() external returns address envfree;
     function _.decimals() external => DISPATCHER(true);
     function _.totalSupply() external => DISPATCHER(true);
     function _.balanceOf(address) external => DISPATCHER(true);
@@ -310,15 +310,60 @@ invariant positiveBalance()
 definition canIncrease(method f) returns bool =
 	f.selector == sig:mint(address,uint256).selector || f.selector == sig:transfer(address,uint256).selector || f.selector == sig:transferFrom(address, address, uint256).selector;
 
- rule mustIncreaseAccount(method f) filtered {f -> canIncrease(f)} {
+rule mustIncreaseAccount(method f) filtered {f -> canIncrease(f)} {
 	env e;
 	calldataarg args;
 
 	f(e,args);
 
 	address a;
-	address owner = E._owner; 
+	address owner = _owner();
 	
 	require(a != owner);
-	assert !increasedBalances[a];
+	satisfy !increasedBalances[a];
  }
+
+
+ghost bool allowanceStore;
+ghost address allowanceOwner;
+ghost address allowanceSender;
+ghost uint256 allowanceValue;
+hook Sload uint256 v _allowances[KEY address a][KEY address b] STORAGE {
+	allowanceOwner = a;
+	allowanceSender = b;
+	allowanceValue = v;
+}
+
+hook Sstore _allowances[KEY address a][KEY address b] uint256 v STORAGE {
+	allowanceStore = true;
+}
+
+/*
+    Property: If one checks allowance of two addressed, the allowances mapping must be accessed.
+*/
+rule allowanceAccessAllowances() {
+	address owner;
+	address sender;
+	env e;
+
+	require(allowanceStore == false);
+	uint256 v = allowance(e, owner, sender);
+	assert(allowanceOwner == owner);
+	assert(allowanceSender == sender);
+	assert(v == allowanceValue);
+	assert(allowanceStore == false);
+}
+
+/*
+	Property: If a balance is changed, a called method is transfer, transferFrom, mint, or burn.
+*/
+rule balanceChanged(method f) {
+	env e;
+	calldataarg args;
+
+	storage storageBefore = lastStorage;
+	f(e, args);
+	storage storageAfter = lastStorage;
+	address a;
+	assert((balanceOf(e, a) at storageBefore != balanceOf(e, a) at storageAfter) => (canIncrease(f) || f.selector == sig:burn(address,uint256).selector));
+}
