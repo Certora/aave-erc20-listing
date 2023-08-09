@@ -180,7 +180,7 @@ rule transferIncreasesBalanceOfReceiver() {
     assert after == assert_uint256(before + amount), "transfer didn't increase balance of receiver";
 }
 
-rule transferExceedingAllowanceDoesntPass() {
+rule transferFromRevertsWhenExceedingAllowance() {
 	address owner;
 	env e;
 	address spender = e.msg.sender;
@@ -256,7 +256,7 @@ rule decreaseAllowanceWorks() {
 	
 }
 
-rule increaseAllowanceWorks() {
+rule increaseAllowanceAddsAllowance() {
 	env e;
 	address owner = e.msg.sender;
 	address spender;
@@ -269,7 +269,6 @@ rule increaseAllowanceWorks() {
 	assert allowedAfter == assert_uint256(allowedBefore + addedValue);
 	
 }
-
 
 rule transferFromReducesAllowance() {
 	env e;
@@ -365,13 +364,17 @@ rule transferIsAdditive() {
 	address recipient;
 	uint256 amount_a; uint amount_b;
 	mathint sum = amount_a + amount_b;
-	require sum > to_mathint(amount_a); 	//no overflow happened
-	storage init = lastStorage; // save storage
-	transfer(e, recipient, amount_a);
-	transfer(e, recipient, amount_b);
+	require sum < max_uint256;
+	storage init = lastStorage; // saves storage
+	
+	transfer(e, recipient, assert_uint256(sum));
 	storage after1 = lastStorage;
 
-	transfer(e, recipient, assert_uint256(sum)) at init; // restore storage
+	transfer@withrevert(e, recipient, amount_a) at init; // restores storage
+		assert !lastReverted;	//if the transfer passed with sum, it should pass with both summands individually
+	transfer@withrevert(e, recipient, amount_b);
+		assert !lastReverted;
 	storage after2 = lastStorage;
-	assert after1 == after2;
+
+	assert after1[currentContract] == after2[currentContract];
 }
