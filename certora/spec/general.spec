@@ -359,3 +359,19 @@ rule noMethodChangesMoreThanTwoBalances(method f) {
 	mathint numberOfChangesOfBalancesAfter = numberOfChangesOfBalances;
 	assert numberOfChangesOfBalancesAfter <= numberOfChangesOfBalancesBefore + 2;
 }
+
+rule transferIsAdditive() {
+	env e;
+	address recipient;
+	uint256 amount_a; uint amount_b;
+	mathint sum = amount_a + amount_b;
+	require sum > to_mathint(amount_a); 	//no overflow happened
+	storage init = lastStorage; // save storage
+	transfer(e, recipient, amount_a);
+	transfer(e, recipient, amount_b);
+	storage after1 = lastStorage;
+
+	transfer(e, recipient, assert_uint256(sum)) at init; // restore storage
+	storage after2 = lastStorage;
+	assert after1 == after2;
+}
