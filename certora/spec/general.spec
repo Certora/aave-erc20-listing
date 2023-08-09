@@ -16,7 +16,81 @@ methods {
 	function _.mint(address,uint256) external => DISPATCHER(true);
 	function _.burn(address,uint256) external => DISPATCHER(true);
 	function _.owner() external => DISPATCHER(true);
+}
 
+/*
+
+	Functions to cover:
+	- balanceOf
+		- maybe, it is just a getter, so probably not
+	- transfer (DONE for now)
+		- rules: transferDoesTheTransfer
+		- we check the possibly revert causes
+		- we check that the balance is indeed transfered
+		- the fact that it cannot change the totalSupply is covered by another rule & invariant
+		- we check that transfer does not affect a third party
+	- approve (TODO)
+		- rules:
+		- check revert causes
+		- check nonzero address (a revert cause)
+		- check that it does not affect a third party
+	
+
+*/
+
+
+
+/*
+	Here we cover only the case where e.msg.sender != to. The case when e.msg.sender is handled by [TODO].
+*/
+
+rule transferDoesTheTransfer(address to, uint256 amount) {
+	env e;
+
+	require e.msg.sender != to;
+	uint256 initialFromBalance = balanceOf(e, e.msg.sender);
+	uint256 initialToBalance = balanceOf(e, to);
+	
+	bool insufficientFunds = initialFromBalance < amount;
+	//the overflow should not be possible if the invariant [somOfBalancesEqualsTotalSupply] holds.
+	//So, alternatively, we should require the invariant here. 
+	bool wouldOverflow =  initialToBalance + amount > max_uint;
+	bool nonZeroAddress = (e.msg.sender == 0) || (to == 0 );
+	
+	transfer@withrevert(e, to, amount);
+
+	if(lastReverted){	
+		//check that it reverted due to one of the expected cases
+		assert insufficientFunds || wouldOverflow || nonZeroAddress;
+	} else {
+		//check that none of the cases that we belive should trigger a revert did not apply
+		assert !(insufficientFunds || wouldOverflow || nonZeroAddress);		
+		//check that the balance was indeed transfered
+		assert to_mathint(balanceOf(e, to)) == initialToBalance + amount;
+		assert to_mathint(balanceOf(e, e.msg.sender)) == initialFromBalance - amount;		
+	}
+}
+
+rule transferToMyself(uint256 amount) {
+	env e;
+	uint256 balanceBefore = balanceOf(e, e.msg.sender);
+	bool zeroAddress = e.msg.sender == 0;
+	transfer@withrevert(e, e.msg.sender, amount);
+	if(lastReverted) {	
+		assert zeroAddress || balanceBefore < amount;
+	} else {
+		assert !(zeroAddress || balanceBefore < amount);
+		assert balanceOf(e, e.msg.sender) == balanceBefore;
+	}
+	
+}
+
+rule transferDoesNotAffectAThirdParty(address to, address thirdParty, uint256 amount) {
+	env e;
+	require (to != thirdParty) && (e.msg.sender != thirdParty);
+	uint256 thirdBalanceBefore = balanceOf(e, thirdParty);
+	transfer(e, to, amount);
+	assert balanceOf(e, thirdParty) == thirdBalanceBefore;
 }
 
 ghost mathint sumOfBalances {
