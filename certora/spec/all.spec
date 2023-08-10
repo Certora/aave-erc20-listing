@@ -161,9 +161,21 @@ rule decreaseInERC20(method f) {
 //
 
 
-
 rule burnRevertingConditions() {
-    ..TODO..
+    env e;
+    address account;
+    uint256 amount;
+
+    bool zeroAddress = account == 0;
+    bool notEnoughBalance = balanceOf(account) < amount;
+    bool shouldRevert = zeroAddress || notEnoughBalance;
+
+    burn@withrevert(account, amount);
+    if(lastReverted){
+        assert shouldRevert;
+    } else {
+        assert !shouldRevert;
+    }
 }
 
 rule burnBurnAndJustTheOneAccount() {
@@ -182,7 +194,22 @@ rule burnBurnAndJustTheOneAccount() {
 }
 
 rule mintRevertingConditions() {
-    ..TODO..
+    env e;
+    address account;
+    uint256 amount;
+
+    bool zeroAddress = account == 0;
+    bool balanceWouldOverflow = balanceOf(account) + amount > max_uint;
+    //we could check also the total supply overflow, but that is handled by the invariant we have
+    // [totalSupplyIsSumOfBalances]
+    bool shouldRevert = zeroAddress || balanceWouldOverflow;
+
+    mint@withrevert(account, amount);
+    if(lastReverted){
+        assert shouldRevert;
+    } else {
+        assert !shouldRevert;
+    }
 }
 
 rule mintMintsAndJustTheOneAccount() {
@@ -209,12 +236,39 @@ rule decreaseAllowanceWorks() {
 
 	uint256 allowedBefore = allowance(owner, spender);
 	uint256 subtractedValue;
-		
-	decreaseAllowance(e, spender, subtractedValue);
-	uint256 allowedAfter = allowance(owner, spender);
-	assert allowedAfter == assert_uint256(allowedBefore - subtractedValue);	
 
-    ..TODO: does not affect another party..
+	decreaseAllowance(e, spender, subtractedValue);
+	assert allowance(owner, spender) == assert_uint256(allowedBefore - subtractedValue);	
+}
+
+rule decreaseAllowanceDoesNotAffectAnotherParty1() {
+	env e;
+	address owner = e.msg.sender;
+	address spender;
+    address nonSpender;
+    require nonSpender != spender;
+
+	uint256 nonspenderAllowedBefore = allowance(owner, nonSpender);
+	uint256 subtractedValue;
+
+	decreaseAllowance(e, spender, subtractedValue);
+    assert allowance(owner, nonSpender) == nonspenderAllowedBefore;
+}
+
+rule decreaseAllowanceDoesNotAffectAnotherParty2() {
+	env e;
+	address owner = e.msg.sender;
+	address ownerSpender;
+    address nonOwner;
+    address nonOwnerSpender;
+    require nonOwner != owner;
+
+    uint256 nonOwnerSpenderAllowance = allowance(nonOwner, nonOwnerSpender);
+
+	uint256 subtractedValue;
+
+	decreaseAllowance(e, spender, subtractedValue);
+    assert allowance(nonOwner, nonOwnerSpender) == nonOwnerSpenderAllowance;
 }
 
 rule decreaseAllowanceRevertingConditions() {
@@ -231,22 +285,20 @@ rule increaseAllowanceAddsAllowance() {
 	uint256 addedValue;
 		
 	increaseAllowance(e, spender, addedValue);
-	uint256 allowedAfter = allowance(owner, spender);
-	assert allowedAfter == assert_uint256(allowedBefore + addedValue);
+	assert allowance(owner, spender) == assert_uint256(allowedBefore + addedValue);	
+}
 
-    ..TODO: does not affect another party..
-	
+rule decreaseAllowanceDoesNotAffectAnotherParty1() {
+    ..TODO..
+}
+
+rule decreaseAllowanceDoesNotAffectAnotherParty2(){
+    ..TODO..
 }
 
 rule increaseAllowanceRevertingConditions() {
     ..TODO..
 }
-
-
-//Three kinds of rules:
-// 1. change of storage is right
-// 2. reverting conditions
-// 3. third party
 
 //Martin has a same rule.
 rule transferFromChangesStorageCorrectly() {
@@ -266,6 +318,32 @@ rule transferFromChangesStorageCorrectly() {
     ..TODO: check the balances of the two accounts..
 
     ..TODO: does not affect another party..
+}
+
+//TODO: make sure the rule passes
+rule transferFromRevertingConditions() {
+    address owner;
+	env e;
+	address spender = e.msg.sender;
+	address recepient;
+
+	uint256 allowed = allowance(owner, spender);
+	uint256 transfered;
+
+    bool zeroAddress = owner == 0 || receipent == 0;
+    bool allowanceIsLow = allowed < trasfered;
+    bool notEnoughBalance = balanceOf(owner) < transfered;
+    bool overflow = balanceOf(recepient) + transfered > max_uint;
+
+    bool isExpectedToRevert = zeroAddress || allowanceIsLow || enoughBalance || overflow;
+
+    transferFrom@withrevert(e, owner, recepient, transfered);   
+
+    if(lastReverted) {
+        assert isExpectedToRevert;
+    } else {
+        assert !(isExpectedToRevert);
+    }
 }
 
 
@@ -297,6 +375,9 @@ rule onlyAllowedMethodsMayChangeBalance(method f) {
 	assert balanceAfter < balanceBefore => canDecreaseBalance(f), "should not decrease balance";
 }
 
+//TODO: checked that [address] can only indeed change allowance[address]
+
+
 rule onlyAllowedMethodsMayChangeAllowance(method f) {
 	env e;
 	address addr1;
@@ -307,7 +388,6 @@ rule onlyAllowedMethodsMayChangeAllowance(method f) {
 	uint256 allowanceAfter = allowance(addr1, addr2);
 	assert allowanceAfter > allowanceBefore => canIncreaseAllowance(f), "should not increase allowance";
 	assert allowanceAfter < allowanceBefore => canDecreaseAllowance(f), "should not decrease allowance";
-
 }
 
 rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
@@ -318,23 +398,22 @@ rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
 	uint256 totalSupplyAfter = totalSupply();
 	assert totalSupplyAfter > totalSupplyBefore => canIncreaseTotalSupply(f), "should not increase total supply";
 	assert totalSupplyAfter < totalSupplyBefore => canDecreaseTotalSupply(f), "should not decrease total supply";
-
 }
 
 invariant balanceOfZeroIsZero()
 	balanceOf(0) == 0;
 
-ghost mathint sum_of_balances {
-	init_state axiom sum_of_balances == 0;
+ghost mathint sumOfBalances {
+	init_state axiom sumOfBalances == 0;
 }
 
 hook Sstore _balances[KEY address a] uint new_value (uint old_value) STORAGE {
-	sum_of_balances = sum_of_balances + new_value - old_value;
+	sumOfBalances = sumOfBalances + new_value - old_value;
 	numberOfChangesOfBalances = numberOfChangesOfBalances + 1;
 }
 
 invariant totalSupplyIsSumOfBalances()
-	to_mathint(totalSupply()) == sum_of_balances;
+	to_mathint(totalSupply()) == sumOfBalances;
 
 ghost mathint numberOfChangesOfBalances {
 	init_state axiom numberOfChangesOfBalances == 0;
@@ -349,7 +428,9 @@ rule noMethodChangesMoreThanTwoBalances(method f) {
 	assert numberOfChangesOfBalancesAfter <= numberOfChangesOfBalancesBefore + 2;
 }
 
-rule transferIsAdditive() {
+// We are checking just that if transfer(10) works, then also transfer(5);transfer(5) works. 
+//We do not check the other direction (does not make sense becase of overflow reverts, i.e. does not hold)
+rule transferIsOneWayAdditive() {
 	env e;
 	address recipient;
 	uint256 amount_a; uint amount_b;
@@ -369,6 +450,9 @@ rule transferIsAdditive() {
 	assert after1[currentContract] == after2[currentContract];
 }
 
+//TODO: consider adding other additive rules
+
+
 
 ///
 ///
@@ -376,241 +460,71 @@ rule transferIsAdditive() {
 ///
 ///
 
-rule reachability(method f)
-{
-	env e;
-	calldataarg args;
-	f(e,args);
-	satisfy true;
-}
 
-/* 
-   	Property: Define and check functions that should never revert
-	Notice:  use f.selector to state which functions should not revert,e.g.f.selector == sig:balanceOf(address).selector 
-*/  
-definition nonReveritngFunction(method f ) returns bool = true; 
+// /*
+// 	Property: Checks precondition which guarantees that transer will not revert.c
+// */
+// rule transferRevert {
+// 	address recipient;
+// 	mathint amount;
+// 	require(amount >= 0 && amount < max_uint256);
+// 	env e;
 
-rule noRevert(method f) filtered {f -> nonReveritngFunction(f) }
-{
-	env e;
-	calldataarg arg;
-    //consider auto filtering for non-payable functions 
-	require e.msg.value == 0; 
-	f@withrevert(e, arg); 
-	assert !lastReverted, "method should not revert";
-}
+// 	mathint balance_sender_before = balanceOf(e, e.msg.sender);
+// 	require(balance_sender_before >= 0 && balance_sender_before < max_uint256);
+// 	mathint allow = allowance(e, e.msg.sender, e.msg.sender);
+// 	require (recipient != 0 && e.msg.sender != 0 && balance_sender_before >= amount
+// 	&& e.msg.value != 0 && allow >= amount);
 
-
-/* 
-    Property: Checks if a function can be frontrun 
-    Notice: Can be enhanced to check more than one function as rules can be double-parameteric
-*/ 
-rule simpleFrontRunning(method f, method g) filtered { f-> !f.isView, g-> !g.isView }
-{
-	env e1;
-	calldataarg arg;
-
-	storage initialStorage = lastStorage;
-	f(e1, arg); 
-	
-
-	env e2;
-	calldataarg arg2;
-	require e2.msg.sender != e1.msg.sender;
-	g(e2, arg2) at initialStorage; 
-
-	f@withrevert(e1, arg);
-	bool succeeded = !lastReverted;
-
-	assert succeeded, "should be called also if frontrunned";
-}
-
-
-/** 
-    @title -   This rule find which functions are privileged.
-    @notice A function is privileged if there is only one address that can call it.
-    @dev The rules finds this by finding which functions can be called by two different users.
-*/
-
-rule privilegedOperation(method f, address privileged)
-{
-	env e1;
-	calldataarg arg;
-	require e1.msg.sender == privileged;
-
-	storage initialStorage = lastStorage;
-	f@withrevert(e1, arg); // privileged succeeds executing candidate privileged operation.
-	bool firstSucceeded = !lastReverted;
-
-	env e2;
-	calldataarg arg2;
-	require e2.msg.sender != privileged;
-	f@withrevert(e2, arg2) at initialStorage; // unprivileged
-	bool secondSucceeded = !lastReverted;
-
-	assert  !(firstSucceeded && secondSucceeded), "function is privileged";
-}
-
-
-rule decreaseInSystemEth(method f) {
-   
-    uint256 before = nativeBalances[currentContract];
-
-    env e;
-	calldataarg arg;
-    f(e, arg);
-
-    uint256 after = nativeBalances[currentContract];
-
-    assert after >= before ||  false ; /* fill in cases where eth can decrease */ 
-}
-
-
-rule decreaseInERC20(method f) {
-    address token;
-    uint256 before = erc20helper.tokenBalanceOf(token, currentContract);
-
-    env e;
-	calldataarg arg;
-    f(e, arg);
-
-    uint256 after = erc20helper.tokenBalanceOf(token, currentContract);
-
-    assert after >= before ||  false ; /* fill in cases eth can decrease */ 
-
-}
-
-/*
-   Property: Checks that the sum of balances is still same after a tranfer from sender to receipent.
-*/
-rule transferPreserveBalance {
-	address recipient;
-	mathint amount;
-	env e;
-
-	require(amount >= 0 && amount < max_uint256);
-	mathint balance_sender_before = balanceOf(e, e.msg.sender);
-    mathint balance_recipient_before = balanceOf(e, recipient);
-
-	transfer(e, recipient, assert_uint256(amount));
-
-	mathint balance_sender_after = balanceOf(e,e.msg.sender);
-    mathint balance_recipient_after = balanceOf(e, recipient);
-
-	assert balance_sender_before + balance_recipient_before == balance_sender_after + balance_recipient_after;
-}
-
-/*
-	Property: Checks precondition which guarantees that transer will not revert.c
-*/
-rule transferRevert {
-	address recipient;
-	mathint amount;
-	require(amount >= 0 && amount < max_uint256);
-	env e;
-
-	mathint balance_sender_before = balanceOf(e, e.msg.sender);
-	require(balance_sender_before >= 0 && balance_sender_before < max_uint256);
-	mathint allow = allowance(e, e.msg.sender, e.msg.sender);
-	require (recipient != 0 && e.msg.sender != 0 && balance_sender_before >= amount
-	&& e.msg.value != 0 && allow >= amount);
-
-	transfer@withrevert(e, recipient, assert_uint256(amount));
-	assert !lastReverted;
-}
+// 	transfer@withrevert(e, recipient, assert_uint256(amount));
+// 	assert !lastReverted;
+// }
 
 /*
 	Property: Increase of an allowance followed by its decrease results in the same allowance as was at the beginning of transaction.
 */
-rule nonDisappearingAllowance {
-	mathint allowance;
-	require(allowance >= 0 && allowance < max_uint256);
+rule IncreaseAllowanceAndDecreaseAllowanceAreInverse {
+	uint256 allowance;	
 	address other;
 	env e;
 
-	mathint beforeIncrease = allowance(e, e.msg.sender, other);
-	require(beforeIncrease >= 0 && beforeIncrease < max_uint256);
-	increaseAllowance(e, other, assert_uint256(allowance));
-	decreaseAllowance(e, other, assert_uint256(allowance));
-	mathint afterDecrease = allowance(e, e.msg.sender, other);
-	require(afterDecrease >= 0 && afterDecrease < max_uint256);
+    storage initialStorage = lastStorage;
 
-	assert beforeIncrease == afterDecrease;
+	uint256 beforeIncrease = allowance(e, e.msg.sender, other);
+	increaseAllowance(e, other, allowance);
+	decreaseAllowance(e, other, allowance);	
+	assert beforeIncrease == allowance(e, e.msg.sender, other);
+
+    uint256 beforeIncrease = allowance(e, e.msg.sender, other) at initialStorage;	
+	decreaseAllowance(e, other, allowance);	
+	increaseAllowance(e, other, allowance);
+    assert beforeIncrease == allowance(e, e.msg.sender, other);
 }
 
 /*
   Property: A transfer performed between operations manipulating allowance does not influence allowance
   Notice: we consider change of allowance between sender and receipent which should be changed by transfer
 */
-rule allowanceNonChangedByTransaction {
-	mathint allowance;
-	require(allowance >= 0 && allowance < max_uint256);
-	address recipient;
-	mathint amount;
-	require(amount >= 0 && amount < max_uint256);
-	env e;
+//This is currently implied by the rule [onlyAllowedMethodsMayChangeBalance]
+// rule transferDoesNotChangeAllowance {
+// 	mathint allowance;
+// 	require(allowance >= 0 && allowance < max_uint256);
+// 	address recipient;
+// 	mathint amount;
+// 	require(amount >= 0 && amount < max_uint256);
+// 	env e;
 
-	mathint beforeIncrease = allowance(e, e.msg.sender, recipient);
-	increaseAllowance(e, recipient, assert_uint256(allowance));
-	transfer(e, recipient, assert_uint256(amount));
-	decreaseAllowance(e, recipient, assert_uint256(allowance));
-	mathint afterDecrease = allowance(e, e.msg.sender, recipient);
+// 	mathint beforeIncrease = allowance(e, e.msg.sender, recipient);
+// 	transfer(e, recipient, assert_uint256(amount));
+// 	mathint afterDecrease = allowance(e, e.msg.sender, recipient);
 
-	assert beforeIncrease == afterDecrease;
-}
-
-/*
-  Property: If sender doesn't have an allowance high enough, transferFrom fails. Then the allowance is increased
-            and transferFrom should proceed sucessfully.
-*/
-rule allowanceAndTransfer {
-	mathint allowance;
-	require(allowance >= 0 && allowance < max_uint256);
-	address sender;
-	address recipient;
-	mathint amount;
-	require(amount >= 0 && amount < max_uint256);
-	env e;
-
-	mathint balance_sender_before = balanceOf(e, e.msg.sender);
-
-	require (recipient != 0 && sender != 0 && balance_sender_before >= amount && e.msg.value != 0);
-	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
-	assert lastReverted;
-
-	mathint amount_new = assert_uint256(amount+1);
-	increaseAllowance(e, sender, assert_uint256(amount_new));
-	require (recipient != 0 && sender != 0 && balance_sender_before >= amount && e.msg.value != 0);
-	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
-	assert lastReverted;
-}
+// 	assert beforeIncrease == afterDecrease;
+// }
 
 
-//TODO: make sure the rule passes
-rule transferFromRevertingConditions() {
-    address owner;
-	env e;
-	address spender = e.msg.sender;
-	address recepient;
 
-	uint256 allowed = allowance(owner, spender);
-	uint256 transfered;
 
-    bool zeroAddress = owner == 0 || receipent == 0;
-    bool allowanceIsLow = allowed < trasfered;
-    bool notEnoughBalance = balanceOf(owner) < transfered;
-    bool overflow = balanceOf(recepient) + transfered > max_uint;
 
-    bool isExpectedToRevert = zeroAddress || allowanceIsLow || enoughBalance || overflow;
-
-    transferFrom@withrevert(e, owner, recepient, transfered);   
-
-    if(lastReverted) {
-        assert isExpectedToRevert;
-    } else {
-        assert !(isExpectedToRevert);
-    }
-}
 
 /*
     Checks if the method f is mint or burn.
@@ -635,6 +549,7 @@ function mintOrBurnBasedOnState(env e, address account, uint256 amount, bool sta
 	Property: Burn after mint, or mint after burn with the same amount should not change balance of the account.
 	Notice: Rule takes the method f and according to its type chooses to perform burn or mint.
 */
+//TODO: Martin will rewrite to being boring like [IncreaseAllowanceAndDecreaseAllowanceAreInverse]
 rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 	address account;
 	mathint amount;
@@ -650,6 +565,9 @@ rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 
 	assert(account_before == account_after);
 }
+
+
+=== we ended here on August 10 at 14:21 ===
 
 ///// UNIT TEST /////
 /*
@@ -752,20 +670,6 @@ rule allowanceAccessAllowances() {
 	assert(allowanceStore == false);
 }
 
-/*
-	Property: If a balance is changed, a called method is transfer, transferFrom, mint, or burn.
-*/
-rule balanceChanged(method f) {
-	env e;
-	calldataarg args;
-
-	storage storageBefore = lastStorage;
-	f(e, args);
-	storage storageAfter = lastStorage;
-	address a;
-	assert((balanceOf(e, a) at storageBefore != balanceOf(e, a) at storageAfter) => (canIncrease(f) || f.selector == sig:burn(address,uint256).selector));
-}
-
 
 ///
 ///
@@ -789,9 +693,6 @@ hook Sstore _balances[KEY address u] uint256 newBalance (uint256 oldBalance) STO
 //}
 
 // totalSupply == sum of all balances
-
-invariant sumOfBalancesEqualsTotalSupply(env e)
-    to_mathint(totalSupply(e)) == sumOfBalances;
 
 // Correct transfer is possible
 // Unit test
@@ -1094,7 +995,7 @@ rule balanceChangesByMintBurnOrTransferOnly(method f) {
     );
 }
 
-rule transferIncreasesBalanceByAmount() {
+rule transferUpdatesBalancesCorrectly() {
     env e;
     address account;
     uint256 amount;
@@ -1112,6 +1013,12 @@ rule transferIncreasesBalanceByAmount() {
 
     assert balanceAfter == balanceBefore + amount;
     assert balanceOfSenderAfter == balanceOfSenderBefore - amount;
+
+    ..TODO.. third party
+}
+
+rule transferRevertingConditions {
+    ..TODO..
 }
 
 rule transferToMyselfDoesNotChangeBalance() {
