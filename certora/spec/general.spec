@@ -127,13 +127,14 @@ rule decreaseInERC20(method f) {
 */
 rule transferPreserveBalance {
 	address recipient;
-	uint amount;
+	mathint amount;
 	env e;
 
+	require(amount >= 0 && amount < max_uint256);
 	mathint balance_sender_before = balanceOf(e, e.msg.sender);
     mathint balance_recipient_before = balanceOf(e, recipient);
 
-	transfer(e, recipient, amount);
+	transfer(e, recipient, assert_uint256(amount));
 
 	mathint balance_sender_after = balanceOf(e,e.msg.sender);
     mathint balance_recipient_after = balanceOf(e, recipient);
@@ -146,14 +147,17 @@ rule transferPreserveBalance {
 */
 rule transferRevert {
 	address recipient;
-	uint256 amount;
+	mathint amount;
+	require(amount >= 0 && amount < max_uint256);
 	env e;
 
-	uint256 balance_sender_before = balanceOf(e, e.msg.sender);
+	mathint balance_sender_before = balanceOf(e, e.msg.sender);
+	require(balance_sender_before >= 0 && balance_sender_before < max_uint256);
+	mathint allow = allowance(e, e.msg.sender, e.msg.sender);
 	require (recipient != 0 && e.msg.sender != 0 && balance_sender_before >= amount
-	&& e.msg.value != 0 && allowance(e, e.msg.sender, e.msg.sender) >= amount);
+	&& e.msg.value != 0 && allow >= amount);
 
-	transfer@withrevert(e, recipient, amount);
+	transfer@withrevert(e, recipient, assert_uint256(amount));
 	assert !lastReverted;
 }
 
@@ -161,14 +165,17 @@ rule transferRevert {
 	Property: Increase of an allowance followed by its decrease results in the same allowance as was at the beginning of transaction.
 */
 rule nonDisappearingAllowance {
-	uint256 allowance;
+	mathint allowance;
+	require(allowance >= 0 && allowance < max_uint256);
 	address other;
 	env e;
 
-	uint256 beforeIncrease = allowance(e, e.msg.sender, other);
-	increaseAllowance(e, other, allowance);
-	decreaseAllowance(e, other, allowance);
-	uint256 afterDecrease = allowance(e, e.msg.sender, other);
+	mathint beforeIncrease = allowance(e, e.msg.sender, other);
+	require(beforeIncrease >= 0 && beforeIncrease < max_uint256);
+	increaseAllowance(e, other, assert_uint256(allowance));
+	decreaseAllowance(e, other, assert_uint256(allowance));
+	mathint afterDecrease = allowance(e, e.msg.sender, other);
+	require(afterDecrease >= 0 && afterDecrease < max_uint256);
 
 	assert beforeIncrease == afterDecrease;
 }
@@ -178,16 +185,18 @@ rule nonDisappearingAllowance {
   Notice: we consider change of allowance between sender and receipent which should be changed by transfer
 */
 rule allowanceNonChangedByTransaction {
-	uint256 allowance;
+	mathint allowance;
+	require(allowance >= 0 && allowance < max_uint256);
 	address recipient;
-	uint256 amount;
+	mathint amount;
+	require(amount >= 0 && amount < max_uint256);
 	env e;
 
-	uint256 beforeIncrease = allowance(e, e.msg.sender, recipient);
-	increaseAllowance(e, recipient, allowance);
-	transfer(e, recipient, amount);
-	decreaseAllowance(e, recipient, allowance);
-	uint256 afterDecrease = allowance(e, e.msg.sender, recipient);
+	mathint beforeIncrease = allowance(e, e.msg.sender, recipient);
+	increaseAllowance(e, recipient, assert_uint256(allowance));
+	transfer(e, recipient, assert_uint256(amount));
+	decreaseAllowance(e, recipient, assert_uint256(allowance));
+	mathint afterDecrease = allowance(e, e.msg.sender, recipient);
 
 	assert beforeIncrease == afterDecrease;
 }
@@ -197,22 +206,24 @@ rule allowanceNonChangedByTransaction {
             and transferFrom should proceed sucessfully.
 */
 rule allowanceAndTransfer {
-	uint256 allowance;
+	mathint allowance;
+	require(allowance >= 0 && allowance < max_uint256);
 	address sender;
 	address recipient;
-	uint256 amount;
+	mathint amount;
+	require(amount >= 0 && amount < max_uint256);
 	env e;
 
-	uint256 balance_sender_before = balanceOf(e, e.msg.sender);
+	mathint balance_sender_before = balanceOf(e, e.msg.sender);
 
 	require (recipient != 0 && sender != 0 && balance_sender_before >= amount && e.msg.value != 0);
-	transferFrom@withrevert(e, sender, recipient, amount);
+	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
 	assert lastReverted;
 
-	uint256 amount_new = assert_uint256(amount+1);
-	increaseAllowance(e, sender, amount_new);
+	mathint amount_new = assert_uint256(amount+1);
+	increaseAllowance(e, sender, assert_uint256(amount_new));
 	require (recipient != 0 && sender != 0 && balance_sender_before >= amount && e.msg.value != 0);
-	transferFrom@withrevert(e, sender, recipient, amount);
+	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
 	assert lastReverted;
 }
 
@@ -241,14 +252,15 @@ function mintOrBurnBasedOnState(env e, address account, uint256 amount, bool sta
 */
 rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 	address account;
-	uint256 amount;
+	mathint amount;
+	require(amount >= 0 && amount < max_uint256);
 	bool state = f.selector == sig:mint(address, uint256).selector;
 	env e;
 	mathint nondet_choice;
 
 	mathint account_before = balanceOf(e, account);
-	bool next_state = mintOrBurnBasedOnState(e, account, amount, state);
-	mintOrBurnBasedOnState(e, account, amount, next_state);
+	bool next_state = mintOrBurnBasedOnState(e, account, assert_uint256(amount), state);
+	mintOrBurnBasedOnState(e, account, assert_uint256(amount), next_state);
 	mathint account_after = balanceOf(e, account);
 
 	assert(account_before == account_after);
@@ -261,12 +273,13 @@ rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 rule allowanceSetByTransfer {
 	address recipient;
 	address sender;
-	uint256 amount;
+	mathint amount;
 	env e;
 	storage initial = lastStorage;
 
 	mathint allowanceBefore = allowance(e, sender, e.msg.sender);
-	transferFrom@withrevert(e, sender, recipient, amount);
+	require(amount >= 0 && amount < max_uint256);
+	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
 	bool succeeded = !lastReverted;
 	mathint allowanceAfter = allowance(e, sender, e.msg.sender);
 	
