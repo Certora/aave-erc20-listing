@@ -572,22 +572,23 @@ rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 ///// UNIT TEST /////
 /*
   Property: Checks that the allowance between sender and msg.sender is changed correctly by transfer
+  Same as [transferFromChangesStorageCorrectly]
 */
-rule allowanceSetByTransfer {
-	address recipient;
-	address sender;
-	mathint amount;
-	env e;
-	storage initial = lastStorage;
-
-	mathint allowanceBefore = allowance(e, sender, e.msg.sender);
-	require(amount >= 0 && amount < max_uint256);
-	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
-	bool succeeded = !lastReverted;
-	mathint allowanceAfter = allowance(e, sender, e.msg.sender);
-	
-	assert succeeded => (allowanceBefore - amount == allowanceAfter || e.msg.sender == sender);
-}
+// rule allowanceSetByTransfer {
+// 	address recipient;
+// 	address sender;
+// 	mathint amount;
+// 	env e;
+// 	storage initial = lastStorage;
+//
+// 	mathint allowanceBefore = allowance(e, sender, e.msg.sender);
+// 	require(amount >= 0 && amount < max_uint256);
+// 	transferFrom@withrevert(e, sender, recipient, assert_uint256(amount));
+// 	bool succeeded = !lastReverted;
+// 	mathint allowanceAfter = allowance(e, sender, e.msg.sender);
+//
+// 	assert succeeded => (allowanceBefore - amount == allowanceAfter || e.msg.sender == sender);
+// }
 
 //// SYSTEM STATE ////
 /*
@@ -623,52 +624,53 @@ invariant positiveBalance()
 	Note: The rule just checks if implementation is not scam.
  */
 
-definition canIncrease(method f) returns bool =
-	f.selector == sig:mint(address,uint256).selector || f.selector == sig:transfer(address,uint256).selector || f.selector == sig:transferFrom(address, address, uint256).selector;
+// definition canIncrease(method f) returns bool =
+// 	f.selector == sig:mint(address,uint256).selector || f.selector == sig:transfer(address,uint256).selector || f.selector == sig:transferFrom(address, address, uint256).selector;
+// Probably implied by the correct changes of balance
+//rule mustIncreaseAccount(method f) filtered {f -> canIncrease(f)} {
+//	env e;
+//	calldataarg args;
+//
+//	f(e,args);
+//
+//	address a;
+//	address owner = _owner();
+//
+//	require(a != owner);
+//	satisfy !increasedBalances[a];
+// }
 
-rule mustIncreaseAccount(method f) filtered {f -> canIncrease(f)} {
-	env e;
-	calldataarg args;
 
-	f(e,args);
-
-	address a;
-	address owner = _owner();
-	
-	require(a != owner);
-	satisfy !increasedBalances[a];
- }
-
-
-ghost bool allowanceStore;
-ghost address allowanceOwner;
-ghost address allowanceSender;
-ghost uint256 allowanceValue;
-hook Sload uint256 v _allowances[KEY address a][KEY address b] STORAGE {
-	allowanceOwner = a;
-	allowanceSender = b;
-	allowanceValue = v;
-}
-
-hook Sstore _allowances[KEY address a][KEY address b] uint256 v STORAGE {
-	allowanceStore = true;
-}
+// ghost bool allowanceStore;
+// ghost address allowanceOwner;
+// ghost address allowanceSender;
+// ghost uint256 allowanceValue;
+// hook Sload uint256 v _allowances[KEY address a][KEY address b] STORAGE {
+// 	allowanceOwner = a;
+// 	allowanceSender = b;
+// 	allowanceValue = v;
+// }
+//
+// hook Sstore _allowances[KEY address a][KEY address b] uint256 v STORAGE {
+// 	allowanceStore = true;
+// }
 
 /*
     Property: If one checks allowance of two addressed, the allowances mapping must be accessed.
+	Done by [decreaseAllowanceDoesNotAffectAnotherParty2]
 */
-rule allowanceAccessAllowances() {
-	address owner;
-	address sender;
-	env e;
-
-	require(allowanceStore == false);
-	uint256 v = allowance(e, owner, sender);
-	assert(allowanceOwner == owner);
-	assert(allowanceSender == sender);
-	assert(v == allowanceValue);
-	assert(allowanceStore == false);
-}
+// rule allowanceAccessAllowances() {
+// 	address owner;
+// 	address sender;
+// 	env e;
+//
+// 	require(allowanceStore == false);
+// 	uint256 v = allowance(e, owner, sender);
+// 	assert(allowanceOwner == owner);
+// 	assert(allowanceSender == sender);
+// 	assert(v == allowanceValue);
+// 	assert(allowanceStore == false);
+// }
 
 
 ///
