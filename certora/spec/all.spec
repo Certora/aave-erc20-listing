@@ -10,6 +10,8 @@ methods {
     function transfer(address,uint256) external returns bool;
     function transferFrom(address,address,uint256) external returns bool;
 
+	function _owner() external returns address;
+
 	function erc20helper.tokenBalanceOf(address, address) external returns (uint256) envfree;
 }
 
@@ -182,7 +184,9 @@ rule burnRevertingConditions() {
 
     bool zeroAddress = account == 0;
     bool notEnoughBalance = balanceOf(account) < amount;
-    bool shouldRevert = zeroAddress || notEnoughBalance;
+	bool notEnoughSupply = totalSupply(e) < amount;
+	bool notTheOwner = e.msg.sender != _owner(e);
+    bool shouldRevert = zeroAddress || notEnoughBalance || notEnoughSupply || notTheOwner;
 
     burn@withrevert(e, account, amount);
     if(lastReverted){
@@ -209,9 +213,9 @@ rule mintRevertingConditions() {
 
     bool zeroAddress = account == 0;
     bool balanceWouldOverflow = balanceOf(account) + amount > max_uint;
-    //we could check also the total supply overflow, but that is handled by the invariant we have
-    // [totalSupplyIsSumOfBalances]
-    bool shouldRevert = zeroAddress || balanceWouldOverflow;
+	bool totalSupplyWouldOverflow = totalSupply(e) + amount > max_uint;
+    bool notTheOwner = e.msg.sender != _owner(e);
+    bool shouldRevert = zeroAddress || balanceWouldOverflow || totalSupplyWouldOverflow || notTheOwner;
 
     mint@withrevert(e, account, amount);
     if(lastReverted){
@@ -311,8 +315,13 @@ rule transferFromChangesBalanceAndAllowanceCorrectly() {
 	transferFrom(e, owner, recipient, transfered);
 
 	assert allowedBefore == assert_uint256(allowance(owner, spender) + transfered);
-	assert assert_uint256(ownerBalanceBefore - transfered) == balanceOf(owner);
-	assert assert_uint256(recipientBalanceBefore + transfered) == balanceOf(recipient);
+
+	if(owner == recipient) {
+		assert assert_uint256(ownerBalanceBefore) == balanceOf(owner);
+	} else { 
+		assert assert_uint256(ownerBalanceBefore - transfered) == balanceOf(owner);
+		assert assert_uint256(recipientBalanceBefore + transfered) == balanceOf(recipient);
+	}
 }
 
 //TODO: make sure the rule passes
@@ -380,9 +389,13 @@ rule transferChangesBalanceCorrectly() {
     mathint balanceOfSenderBefore = balanceOf(e.msg.sender);
 
     transfer(e, recipient, amount);
-    
-	assert balanceOf(e, recipient) == assert_uint256(balanceOfRecipientBefore + amount);
-	assert balanceOf(e, e.msg.sender) == assert_uint256(balanceOfSenderBefore - amount);
+
+	if(e.msg.sender != recipient) {
+		assert balanceOf(e, recipient) == assert_uint256(balanceOfRecipientBefore + amount);
+		assert balanceOf(e, e.msg.sender) == assert_uint256(balanceOfSenderBefore - amount);
+	} else {
+		assert balanceOf(e, e.msg.sender) == assert_uint256(balanceOfSenderBefore);
+	}
 }
 
 rule transferRevertingConditions {
