@@ -48,7 +48,7 @@ rule transferIsPossible {
 
 // Unit test
 // Risk analysis
-rule noFeeOnTransferFrom(address sender, address receiver, uint256 amount) {
+rule transferFromDoesNotHaveFee(address sender, address receiver, uint256 amount) {
     env e;
     require e.msg.value == 0;
 
@@ -72,7 +72,7 @@ rule noFeeOnTransferFrom(address sender, address receiver, uint256 amount) {
 
 // Cannot send more than spending limit
 // risk analysis
-rule noOverspending(address spender, address receiver, uint256 limit) {
+rule transferFromRevertsWhenExceedingAllowance(address spender, address receiver, uint256 limit) {
     env e;
     require e.msg.value == 0;
     require spender != 0;
@@ -97,7 +97,7 @@ rule noOverspending(address spender, address receiver, uint256 limit) {
 
 // Authorised spender can spend
 // Unit test
-rule authorisedCanSpend(address spender, address receiver) {
+rule transferFromSucceedsOnAuthorisedSpender(address spender, address receiver) {
     env e;
     require e.msg.value == 0;
     require spender != 0;
@@ -125,6 +125,39 @@ rule authorisedCanSpend(address spender, address receiver) {
 
     transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
     assert !lastReverted, "authorised transfer failed";
+}
+
+rule transferFromFailsOnUnauthorisedSpender {
+    env e;
+    require e.msg.value == 0;
+    address spender;
+    address receiver;
+    require spender != 0;
+    require receiver != 0;
+    require e.msg.sender != 0;
+
+    uint256 limit;
+
+    approve@withrevert(e, spender, limit);
+    assert !lastReverted, "approve failed";
+
+    env e2;
+    require e2.msg.sender != e.msg.sender;
+    require e2.msg.sender != spender;
+    require e2.msg.value == 0;
+
+    uint256 actual;
+    require actual <= limit;
+    require actual > 0;
+
+    require balanceOf(e, e.msg.sender) >= limit;
+
+    require totalSupply(e) - actual >= 0;
+    require assert_uint256(totalSupply(e) - actual) >= balanceOf(e2, receiver);
+    require allowance(e2, e.msg.sender, e2.msg.sender) == 0;
+
+    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
+    assert lastReverted, "unauthorised transfer succeeded";
 }
 
 // Unit test
