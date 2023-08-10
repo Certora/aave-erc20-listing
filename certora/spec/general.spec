@@ -28,7 +28,7 @@ methods {
 		- we check the possibly revert causes
 		- we check that the balance is indeed transfered
 		- the fact that it cannot change the totalSupply is covered by another rule & invariant
-		- we check that transfer does not affect a third party
+		- we check that transfer does not affect a third 
 	- approve (TODO)
 		- rules:
 		- check revert causes
@@ -38,10 +38,47 @@ methods {
 
 */
 
+/*
+	Assume we want to do two seemingly independet transfers:
+	1. transfer [amount_A] from [e_A.msg.sender] to [to_A], and
+	2. transfer [amount_B] from [e_B.msg.sender] to [to_B],
+	such that [e_A.msg.sender != e_B.msg.sender] and [to_A != to_B]. 
+	This rule checks that the fact whether the transfer A reverts or not
+	does not depend on the order of the two transfers. (the case for B follows).
+*/
+rule orderOfIndependentTransfersDoesNotAffectReverting(
+	env e_A, 
+	address to_A, 
+	uint256 amount_A,
+	env e_B, 
+	address to_B,
+	uint256 amount_B
+) {
+	require (e_A.msg.sender != e_B.msg.sender) || 
+		(to_mathint(balanceOf(e_A, e_A.msg.sender)) >= amount_A + amount_B);
+	require to_B != e_A.msg.sender;
+	require (to_A != to_B) ||
+		(to_mathint(balanceOf(e_A, to_A)) + amount_A + amount_B <= max_uint);
 
+
+	storage initialStorage = lastStorage;
+
+	transfer@withrevert(e_A, to_A, amount_A);
+	bool ARevertedAtS1 = lastReverted;
+
+	transfer(e_B, to_B, amount_B) at initialStorage;
+	transfer@withrevert(e_A, to_A, amount_A);
+	bool ARevertedAtS2 = lastReverted;
+
+	assert (ARevertedAtS1 == ARevertedAtS2);
+	// the other assert, over B, should be symteric, so no need to prove.
+}
 
 /*
-	Here we cover only the case where e.msg.sender != to. The case when e.msg.sender is handled by [TODO].
+	Here we cover only the case where e.msg.sender != to. The case when e.msg.sender is handled by [transferToMyself].
+	In particular, we check that:
+		1. we cover all the rever cases
+		2. the amount is indeed transfered
 */
 
 rule transferDoesTheTransfer(address to, uint256 amount) {
@@ -71,6 +108,11 @@ rule transferDoesTheTransfer(address to, uint256 amount) {
 	}
 }
 
+/*
+	Check that:
+		1. If I transfer the tokens to myself, my balance does not change. 
+		2. that we cover all revert cases.
+*/
 rule transferToMyself(uint256 amount) {
 	env e;
 	uint256 balanceBefore = balanceOf(e, e.msg.sender);
@@ -85,24 +127,102 @@ rule transferToMyself(uint256 amount) {
 	
 }
 
-rule transferDoesNotAffectAThirdParty(address to, address thirdParty, uint256 amount) {
-	env e;
-	require (to != thirdParty) && (e.msg.sender != thirdParty);
+
+
+/*
+	The below function just calls (dispatch) all methods (an arbitrary one) from the contract, 
+	using given [env e], [address from] and [address to].
+	We use this function in several rules, including: . The usecase is typically to show that 
+	the call of the function does not affect a "property" of a third party (i.e. != e.msg.sender, from, to),
+	such as the balance or allowance.  
+
+*/
+function callFunctionWithParams(env e, method f, address from, address to) {
+	uint256 amount;
+
+	if (f.selector == sig:transfer(address, uint256).selector) {
+		transfer(e, to, amount);
+	} else if (f.selector == sig:allowance(address, address).selector) {
+		allowance(e, from, to);
+	} else if (f.selector == sig:approve(address, uint256).selector) {
+		approve(e, to, amount);
+	} else if (f.selector == sig:transferFrom(address, address, uint256).selector) {
+		transferFrom(e, from, to, amount);
+	} else if (f.selector == sig:increaseAllowance(address, uint256).selector) {
+		increaseAllowance(e, to, amount);
+	} else if (f.selector == sig:decreaseAllowance(address, uint256).selector) {
+		decreaseAllowance(e, to, amount);
+	} else if (f.selector == sig:mint(address, uint256).selector) {
+		mint(e, to, amount);
+	} else if (f.selector == sig:burn(address, uint256).selector) {
+		burn(e, from, amount);
+	} else {
+		calldataarg args;
+		f(e, args);
+	}
+}
+
+/*
+	Given addresses [e.msg.sender], [from], [to] and [thirdParty], we check that 
+	there is no method [f] that would:
+	1] not take [thirdParty] as an input argument, and
+	2] yet changed the balance of [thirdParty].
+	Intuitively, we target e.g. the case where a transfer of tokens [from] -> [to]
+	changes the balance of [thirdParty]. 
+*/
+rule doesNotAffectAThirdPartyBalance(method f) {
+	env e;	
+	address from;
+	address to;
+	address thirdParty;
+
+	require (thirdParty != from) && (thirdParty != to) && (thirdParty != e.msg.sender);
+
 	uint256 thirdBalanceBefore = balanceOf(e, thirdParty);
-	transfer(e, to, amount);
+	callFunctionWithParams(e, f, from, to);
+
 	assert balanceOf(e, thirdParty) == thirdBalanceBefore;
 }
+
+/*
+	Given addresses [e.msg.sender], [from], [to] and [thirdParty], we check that 
+	there is no method [f] that would:
+	1] not take [thirdParty] as an input argument, and
+	2] yet changed the allowance of [thirdParty] w.r.t a [thirdPartySpender].
+*/
+rule doesNotAffectAThirdPartyAllowance(method f) {
+	env e;	
+	address from;
+	address to;
+	address thirdParty;
+	address thirdPartySpender;
+
+	require (thirdParty != from) && (thirdParty != to) && (thirdParty != e.msg.sender);
+
+	uint256 spenderAllowanceBefore = allowance(e, thirdParty, thirdPartySpender);
+	callFunctionWithParams(e, f, from, to);
+
+	assert allowance(e, thirdParty, thirdPartySpender) == spenderAllowanceBefore;
+}
+
+
 
 ghost mathint sumOfBalances {
 	init_state axiom sumOfBalances == 0;
 }
 
-hook Sstore _balances[KEY address addr] uint256 new_balance (uint256 old_balance) STORAGE {
+hook Sstore _balances[KEY address addr] uint256 new_balance (uint256 old_balance) STORAGE {	
 	sumOfBalances = sumOfBalances + to_mathint(new_balance) - to_mathint(old_balance);
+}
+
+hook Sload uint256 v _balances[KEY address addr] STORAGE {	
+	require to_mathint(v) <= sumOfBalances;
 }
 
 invariant somOfBalancesEqualsTotalSupply(env e)
 	sumOfBalances == to_mathint(totalSupply(e));
+
+
 
 
 /*
