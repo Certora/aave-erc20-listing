@@ -447,10 +447,10 @@ rule totalSuppyDoesNotChange(method f) filtered {f -> !canChangeTotalSupply(f) }
 
 */
 function callFunctionWithParams(env e, method f, address from, address to) {
-	uint256
- amount;
+	uint256 amount;
 
 	if (f.selector == sig:transfer(address, uint256).selector) {
+		require from == e.msg.sender;
 		transfer(e, to, amount);
 	} else if (f.selector == sig:allowance(address, address).selector) {
 		allowance(e, from, to);
@@ -527,37 +527,38 @@ rule onlyAllowedMethodsMayChangeBalance(method f) {
 	assert balanceAfter < balanceBefore => canDecreaseBalance(f), "should not decrease balance";
 }
 
-
-rule whoDecreaseBalance(method f) filtered {f -> canDecreaseBalance(f) } {
-
-	address shouldChange;
-	address shouldNotChange;
-	require shouldChange != shouldNotChange;
-	uint256 balanceBefore = balanceOf(shouldNotChange);
+/*
+	Checks that functions that can change the balance change balance only of the relevant adresses, 
+	i.e, do not affect a third party. For example, burn(...) should decrease a balance only of a single address.
+*/
+rule whoCanChangeBalance(method f) filtered {f -> canDecreaseBalance(f) || canIncreaseBalance(f) } {
 	env e;
-
+	address mightChange;
+	address shouldNotChange;
+	require mightChange != shouldNotChange;
+	uint256 balanceBefore = balanceOf(shouldNotChange);
+	
 	uint256 amount;
 	address receiver;
 	require receiver != shouldNotChange;
 
 	if(f.selector == sig:burn(address,uint256).selector) {
-		uint256 amount;		
-		burn(e, shouldChange, amount);
+		burn(e, mightChange, amount);
 	} else if(f.selector == sig:transfer(address,uint256).selector) {
-		require e.msg.sender == shouldChange;
+		require e.msg.sender == mightChange;
 		transfer(e, receiver, amount);
 	} else if(f.selector == sig:transferFrom(address,address,uint256).selector) {
-		transferFrom(e, shouldChange, receiver, amount);
+		transferFrom(e, mightChange, receiver, amount);
+	} else if(f.selector == sig:mint(address,uint256).selector) {
+		mint(e, mightChange, amount);
 	} else {
+		// This is here to trigger when user adds a new function to the smart contract that
+		// can change the balance. In such case, we should include corresponding [else if] here.
 		assert false;
 	}
 
 	assert balanceBefore == balanceOf(shouldNotChange);
 }
-
-// rule whoIncreaseBalance(method f) filtered {f -> canIncreaseBalance(f) } {
-// 	..TODO..
-// }
 
 
 rule onlyAllowedMethodsMayChangeAllowance(method f) {
@@ -572,6 +573,50 @@ rule onlyAllowedMethodsMayChangeAllowance(method f) {
 	assert allowanceAfter < allowanceBefore => canDecreaseAllowance(f), "should not decrease allowance";
 }
 
+/*
+	Checks that functions that can change the balance change balance only of the relevant adresses, 
+	i.e, do not affect a third party. For example, burn(...) should decrease a balance only of a single address.
+*/
+rule whoCanChangeAllowance(method f) filtered {f -> canDecreaseAllowance(f) || canIncreaseAllowance(f) } {
+	env e;
+	address owner;
+	address spender;
+	uint256 amountToChange;	
+
+	address otherOwner;
+	address otherSpender;
+	uint256 theOtherAllowance = allowance(otherOwner, otherSpender);
+
+	if(f.selector == sig:approve(address,uint256).selector) {		
+		require owner == e.msg.sender;
+		uint256 newAllowance;
+		require to_mathint(amountToChange) == allowance(owner, spender) - newAllowance;
+		approve(e, spender, newAllowance);
+	} else if(f.selector == sig:increaseAllowance(address,uint256).selector) {
+		require owner == e.msg.sender;
+		increaseAllowance(e, spender, amountToChange);
+	} else if(f.selector == sig:transferFrom(address,address,uint256).selector) {
+		address recipient;
+		require e.msg.sender == spender;
+		transferFrom(e, owner, recipient, amountToChange);
+	} else if(f.selector == sig:decreaseAllowance(address,uint256).selector) {
+		require owner == e.msg.sender;
+		decreaseAllowance(e, spender, amountToChange);
+	} else {
+		// This is here to trigger when user adds a new function to the smart contract that
+		// can change the balance. In such case, we should include corresponding [else if] here.
+		assert false;
+	}
+
+	uint256 newAllowanceOfTheOther = allowance(otherOwner, otherSpender);
+
+	assert theOtherAllowance != newAllowanceOfTheOther <=>
+		(otherSpender == spender && otherOwner == owner && amountToChange > 0);
+}
+
+
+
+
 rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
 	env e;
 	uint256 totalSupplyBefore = totalSupply();
@@ -581,7 +626,6 @@ rule onlyAllowedMethodsMayChangeTotalSupply(method f) {
 	assert totalSupplyAfter > totalSupplyBefore => canIncreaseTotalSupply(f), "should not increase total supply";
 	assert totalSupplyAfter < totalSupplyBefore => canDecreaseTotalSupply(f), "should not decrease total supply";
 }
-
 
 
 //
@@ -708,7 +752,6 @@ rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 }
 
 
-//// SYSTEM STATE ////
 /*
   Property: all deposits must be greater or equal to withdraws for all methods with exception of burn
   Notice: in case of burn, one can burn from initial _totalSupply
@@ -718,64 +761,6 @@ invariant positiveBalance()
 	totalWithdraw <= totalDeposit
 	filtered {f -> f.selector != sig:burn(address,uint256).selector}
 
-
-
-/*
-	Assume we want to do two seemingly independet transfers:
-	1. transfer [amount_A] from [e_A.msg.sender] to [to_A], and
-	2. transfer [amount_B] from [e_B.msg.sender] to [to_B],
-	such that [e_A.msg.sender != e_B.msg.sender] and [to_A != to_B]. 
-	This rule checks that the fact whether the transfer A reverts or not
-	does not depend on the order of the two transfers. (the case for B follows).
-*/
-rule orderOfIndependentTransfersDoesNotAffectReverting(
-	env e_A, 
-	address to_A, 
-	uint256 amount_A,
-	env e_B, 
-	address to_B,
-	uint256 amount_B
-) {
-	require (e_A.msg.sender != e_B.msg.sender) || 
-		(to_mathint(balanceOf(e_A, e_A.msg.sender)) >= amount_A + amount_B);
-	require to_B != e_A.msg.sender;
-	require (to_A != to_B) ||
-		(to_mathint(balanceOf(e_A, to_A)) + amount_A + amount_B <= max_uint);
-
-
-	storage initialStorage = lastStorage;
-
-	transfer@withrevert(e_A, to_A, amount_A);
-	bool ARevertedAtS1 = lastReverted;
-
-	transfer(e_B, to_B, amount_B) at initialStorage;
-	transfer@withrevert(e_A, to_A, amount_A);
-	bool ARevertedAtS2 = lastReverted;
-
-	assert (ARevertedAtS1 == ARevertedAtS2);
-	// the other assert, over B, should be symteric, so no need to prove.
-}
-
-
-
-
-
-// rule whoCanDecreaseBalance {
-// 	address holder; 
-// 	address spender;
-// 	mathint balance_before = balanceOf(holder);
-// 	method f; 
-// 	env e; 
-// 	calldataarg args;
-// 	f(e, args);
-
-// 	mathint balance_after = balanceOf(holder);
-// 	assert balance_after < balance_before => f.selector == burn.selector && e.msg.sender == _owner;
-
-// 	assert balance_after < balance_before => f.selector == transfer.selector && e.msg.sender == holder;
-// 	assert balance_after < balance_before => f.selector == transferFrom.selector && e.msg.sender == spende;
-
-// }
 
 
 rule whoCanIncreaseBalance_mint() {
