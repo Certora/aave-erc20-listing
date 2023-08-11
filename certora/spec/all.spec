@@ -325,10 +325,10 @@ rule transferFromRevertingConditions() {
 	uint256 allowed = allowance(owner, spender);
 	uint256 transfered;
 
-    bool zeroAddress = owner == 0 || recipient == 0;
+    bool zeroAddress = owner == 0 || recipient == 0 || e.msg.sender == 0;
     bool allowanceIsLow = allowed < transfered;
     bool notEnoughBalance = balanceOf(owner) < transfered;
-    bool overflow = balanceOf(recipient) + transfered > max_uint;
+    bool overflow = recipient != owner && balanceOf(recipient) + transfered > max_uint;
 
     bool shouldRevert = zeroAddress || allowanceIsLow || notEnoughBalance || overflow;
 
