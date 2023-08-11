@@ -691,212 +691,216 @@ hook Sstore _balances[KEY address u] uint256 newBalance (uint256 oldBalance) STO
     sumOfBalances = sumOfBalances + newBalance - oldBalance;
 }
 
-//hook Sload uint256 balance _balances[KEY address u] STORAGE {
-//    balances[u] = _balances[u];
-//}
-
-// totalSupply == sum of all balances
-
-// Correct transfer is possible
-// Unit test
-rule transferIsPossible {
+rule transferRevertingConditions {
+	env e;
 	address recipient;
 	uint256 amount;
-	env e;
     require e.msg.value == 0;
 
-	uint256 balance_sender_before = balanceOf@withrevert(e, e.msg.sender);
-    assert !lastReverted, "balanceOf reverted";
+	bool senderBalanceTooLow = balanceOf(e.msg.sender) < amount;
+    bool zeroRecipient = recipient == 0;
+    bool zeroSender = e.msg.sender == 0;
+    bool senderIsRecipient = e.msg.sender == recipient;
 
-	require (recipient != 0);
-    require (e.msg.sender != 0);
-    require (balance_sender_before >= amount);
-    require (recipient != e.msg.sender);
+    bool recipientBalanceOverflows = balanceOf(recipient) + amount > max_uint256 && !senderIsRecipient;
 
-    approve@withrevert(e, e.msg.sender, amount);
-    assert !lastReverted, "approve reverted";
-	require (allowance(e, e.msg.sender, e.msg.sender) >= amount);
-    
-    require balanceOf(e, recipient) == balances[recipient];
-    require totalSupply(e) - amount >= 0; // In mathint
-    require assert_uint256(totalSupply(e) - amount) >= balances[recipient];
+    bool shouldRevert = senderBalanceTooLow || zeroRecipient || zeroSender || recipientBalanceOverflows;
 
 	transfer@withrevert(e, recipient, amount);
-	assert !lastReverted, "transfer reverted when ${e.msg.sender} sent to ${recipient}";
-
+    if (lastReverted) {
+        assert shouldRevert;
+    } else {
+        assert !shouldRevert;
+    }
 }
 
-// Unit test
-// Risk analysis
-rule transferFromDoesNotHaveFee(address sender, address receiver, uint256 amount) {
+// Antt: This rule is strange, transfer doesn't require approve
+//rule transferIsPossible {
+//	address recipient;
+//	uint256 amount;
+//	env e;
+//    require e.msg.value == 0;
+//
+//	uint256 balance_sender_before = balanceOf@withrevert(e, e.msg.sender);
+//    assert !lastReverted, "balanceOf reverted";
+//
+//	require (recipient != 0);
+//    require (e.msg.sender != 0);
+//    require (balance_sender_before >= amount);
+//    require (recipient != e.msg.sender);
+//
+//    approve@withrevert(e, e.msg.sender, amount);
+//    assert !lastReverted, "approve reverted";
+//	require (allowance(e, e.msg.sender, e.msg.sender) >= amount);
+//    
+//    require balanceOf(e, recipient) == balances[recipient];
+//    require totalSupply(e) - amount >= 0; // In mathint
+//    require assert_uint256(totalSupply(e) - amount) >= balances[recipient];
+//
+//	transfer@withrevert(e, recipient, amount);
+//	assert !lastReverted, "transfer reverted when ${e.msg.sender} sent to ${recipient}";
+//
+//}
+
+// Antti: This rule checks that receiver receives correctly the sent funds.  It should be inserted as part of [transferFromChangesStorageCorrectly]
+rule transferFromDoesNotHaveFee {
     env e;
     require e.msg.value == 0;
+    address sender;
+    address receiver;
+    uint256 amount;
 
-    require sender != receiver;
-    require sender != 0;
-    require receiver != 0;
-    require e.msg.sender != 0;
+    bool senderIsReceiver = sender == receiver;
 
-    require balanceOf(e, sender) >= amount;
-    require allowance(e, sender, e.msg.sender) >= amount;
-    uint256 balanceBefore = balanceOf(e, receiver);
+    uint256 balanceBefore = balanceOf(receiver);
 
-    require totalSupply(e) - amount >= 0;
-    require assert_uint256(totalSupply(e) - amount) >= balanceBefore;
-
-    transferFrom@withrevert(e, sender, receiver, amount);
+    transferFrom(e, sender, receiver, amount);
 
     uint256 balanceAfter = balanceOf(e, receiver);
-    assert balanceAfter == assert_uint256(balanceBefore + amount), "balance after is incorrect";
+
+    if (senderIsReceiver) {
+        assert balanceAfter == balanceBefore;
+    } else {
+        assert balanceAfter == assert_uint256(balanceBefore + amount);
+    }
 }
 
 // Cannot send more than spending limit
 // risk analysis
-rule transferFromRevertsWhenExceedingAllowance(address spender, address receiver, uint256 limit) {
-    env e;
-    require e.msg.value == 0;
-    require spender != 0;
-    require receiver != 0;
-    require e.msg.sender != 0;
-
-    approve@withrevert(e, spender, limit);
-    assert !lastReverted, "approve failed";
-
-    uint256 actual;
-
-    require actual > limit;
-
-    env e2;
-    require e2.msg.sender != e.msg.sender;
-    require e2.msg.sender == spender;
-    require e2.msg.value == 0;
-
-    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
-    assert lastReverted, "Overspent";
-}
+// Antti: This rule is implied by [transferFromRevertingConditions]
+//rule transferFromRevertsWhenExceedingAllowance(address spender, address receiver, uint256 limit) {
+//    env e;
+//    require e.msg.value == 0;
+//    require spender != 0;
+//    require receiver != 0;
+//    require e.msg.sender != 0;
+//
+//    approve@withrevert(e, spender, limit);
+//    assert !lastReverted, "approve failed";
+//
+//    uint256 actual;
+//
+//    require actual > limit;
+//
+//    env e2;
+//    require e2.msg.sender != e.msg.sender;
+//    require e2.msg.sender == spender;
+//    require e2.msg.value == 0;
+//
+//    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
+//    assert lastReverted, "Overspent";
+//}
 
 // Authorised spender can spend
 // Unit test
-rule transferFromSucceedsOnAuthorisedSpender(address spender, address receiver) {
-    env e;
-    require e.msg.value == 0;
-    require spender != 0;
-    require receiver != 0;
-    require e.msg.sender != 0;
+// Antti: This rule is implied by [transferFromRevertingConditions]
+//rule transferFromSucceedsOnAuthorisedSpender(address spender, address receiver) {
+//    env e;
+//    require e.msg.value == 0;
+//    require spender != 0;
+//    require receiver != 0;
+//    require e.msg.sender != 0;
+//
+//    uint256 limit;
+//
+//    approve@withrevert(e, spender, limit);
+//    assert !lastReverted, "approve failed";
+//
+//    env e2;
+//    require e2.msg.sender != e.msg.sender;
+//    require e2.msg.sender == spender;
+//    require e2.msg.value == 0;
+//
+//    uint256 actual;
+//    require actual <= limit;
+//
+//    require balanceOf(e, e.msg.sender) >= limit;
+//
+//    require totalSupply(e) - actual >= 0;
+//    require assert_uint256(totalSupply(e) - actual) >= balanceOf(e2, receiver);
+//
+//
+//    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
+//    assert !lastReverted, "authorised transfer failed";
+//}
 
-    uint256 limit;
-
-    approve@withrevert(e, spender, limit);
-    assert !lastReverted, "approve failed";
-
-    env e2;
-    require e2.msg.sender != e.msg.sender;
-    require e2.msg.sender == spender;
-    require e2.msg.value == 0;
-
-    uint256 actual;
-    require actual <= limit;
-
-    require balanceOf(e, e.msg.sender) >= limit;
-
-    require totalSupply(e) - actual >= 0;
-    require assert_uint256(totalSupply(e) - actual) >= balanceOf(e2, receiver);
-
-
-    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
-    assert !lastReverted, "authorised transfer failed";
-}
-
-rule transferFromFailsOnUnauthorisedSpender {
-    env e;
-    require e.msg.value == 0;
-    address spender;
-    address receiver;
-    require spender != 0;
-    require receiver != 0;
-    require e.msg.sender != 0;
-
-    uint256 limit;
-
-    approve@withrevert(e, spender, limit);
-    assert !lastReverted, "approve failed";
-
-    env e2;
-    require e2.msg.sender != e.msg.sender;
-    require e2.msg.sender != spender;
-    require e2.msg.value == 0;
-
-    uint256 actual;
-    require actual <= limit;
-    require actual > 0;
-
-    require balanceOf(e, e.msg.sender) >= limit;
-
-    require totalSupply(e) - actual >= 0;
-    require assert_uint256(totalSupply(e) - actual) >= balanceOf(e2, receiver);
-    require allowance(e2, e.msg.sender, e2.msg.sender) == 0;
-
-    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
-    assert lastReverted, "unauthorised transfer succeeded";
-}
-
-// Unit test
-rule transferFromDoesntChangeTotalSupply(address alice, address bob, uint256 amount) {
-    env e;
-    require e.msg.value == 0;
-    uint256 supplyBefore = totalSupply@withrevert(e);
-
-    transferFrom@withrevert(e, alice, bob, amount);
-
-    uint256 supplyAfter = totalSupply@withrevert(e);
-
-    assert supplyBefore == supplyAfter;
-}
+// Antti: This rule is implied by [transferFromRevertingConditions], a special case allowance < transferred
+//rule transferFromFailsOnUnauthorisedSpender {
+//    env e;
+//    require e.msg.value == 0;
+//    address spender;
+//    address receiver;
+//    require spender != 0;
+//    require receiver != 0;
+//    require e.msg.sender != 0;
+//
+//    uint256 limit;
+//
+//    approve@withrevert(e, spender, limit);
+//    assert !lastReverted, "approve failed";
+//
+//    env e2;
+//    require e2.msg.sender != e.msg.sender;
+//    require e2.msg.sender != spender;
+//    require e2.msg.value == 0;
+//
+//    uint256 actual;
+//    require actual <= limit;
+//    require actual > 0;
+//
+//    require balanceOf(e, e.msg.sender) >= limit;
+//
+//    require totalSupply(e) - actual >= 0;
+//    require assert_uint256(totalSupply(e) - actual) >= balanceOf(e2, receiver);
+//    require allowance(e2, e.msg.sender, e2.msg.sender) == 0;
+//
+//    transferFrom@withrevert(e2, e.msg.sender, receiver, actual);
+//    assert lastReverted, "unauthorised transfer succeeded";
+//}
 
 // Unit test
+// Antti: This rule is a special case of [onlyAllowedMethodsMayChangeTotalSupply]
+//rule transferFromDoesntChangeTotalSupply(address alice, address bob, uint256 amount) {
+//    env e;
+//    require e.msg.value == 0;
+//    uint256 supplyBefore = totalSupply@withrevert(e);
+//
+//    transferFrom@withrevert(e, alice, bob, amount);
+//
+//    uint256 supplyAfter = totalSupply@withrevert(e);
+//
+//    assert supplyBefore == supplyAfter;
+//}
+//
+// Unit test
+
+
+// Antti: This rule should be inserted to [mintMintsAndJustTheOneAccount]
 rule mintIncreasesTotalSupply() {
+    env e;
+    require e.msg.value == 0;
+
     address destination;
     uint256 amount;
 
-    env e;
-    require e.msg.sender == currentContract.deployer;
-    require e.msg.value == 0;
-    require destination != 0;
+    uint256 prevTotalSupply = totalSupply();
 
-    uint256 prevTotalSupply = totalSupply@withrevert(e);
-    assert !lastReverted, "first totalSupply reverted";
-    require prevTotalSupply + amount <= max_uint256;
+    mint(e, destination, amount);
 
-    uint256 destinationFunds = balanceOf@withrevert(e, destination);
-    assert !lastReverted, "balanceOf destitination reverted";
-    require destinationFunds <= prevTotalSupply;
-
-    mint@withrevert(e, destination, amount);
-    assert !lastReverted, "mint reverted";
-
-    env e2;
-    require e2.msg.value == 0;
-
-    uint256 newTotalSupply = totalSupply@withrevert(e2);
-    assert !lastReverted, "second totalSupply reverted";
-
-    assert newTotalSupply == assert_uint256(prevTotalSupply + amount);
+    assert totalSupply() == assert_uint256(prevTotalSupply + amount);
 }
 
-// Only deployer can mint
-// Unit test
-// risk analysis
-rule onlyDeployerCanMint() {
+// Antti: This rule should be added to [mintRevertingConditions]
+rule onlyOwnerCanMint() {
+    env e;
+    require e.msg.value == 0;
     address destination;
     uint256 amount;
     address nonDeployer;
 
-    require nonDeployer != currentContract.deployer;
-
-    env e;
-    require e.msg.sender == nonDeployer;
+    require e.msg.sender != currentContract._owner;
     mint@withrevert(e, destination, amount);
-    assert lastReverted, "nondeployer could mint";
+    assert lastReverted, "non-owner can mint";
 }
 
 // If something is transferred, allowance decreases by that amount
