@@ -682,46 +682,30 @@ rule IncreaseAllowanceAndDecreaseAllowanceAreInverse {
 }
 
 
-/*
-    Checks if the method f is mint or burn.
-*/
 definition isMintOrBurn(method f) returns bool =
-	f.selector == sig:burn(address,uint256).selector || f.selector == sig:mint(address,uint256).selector;
-
-/*
-	The function performs mint (if state is true), otherwise performs burn and returns reverted state
-*/
-function mintOrBurnBasedOnState(env e, address account, uint256 amount, bool state) returns bool {
-	if (state) {
-		mint(e, account, amount);
-		return false;
-	} else {
-		burn(e, account, amount);
-		return true;
-	}
-}
+       f.selector == sig:burn(address,uint256).selector || f.selector == sig:mint(address,uint256).selector;
 
 /*
 	Property: Burn after mint, or mint after burn with the same amount should not change balance of the account.
 	Notice: Rule takes the method f and according to its type chooses to perform burn or mint.
 */
-//TODO: Martin will rewrite to being boring like [IncreaseAllowanceAndDecreaseAllowanceAreInverse]
 rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 	address account;
-	mathint amount;
-	require(amount >= 0 && amount < max_uint256);
-	bool state = f.selector == sig:mint(address, uint256).selector;
+	uint256 amount;
 	env e;
-	mathint nondet_choice;
 
-	mathint account_before = balanceOf(e, account);
-	bool next_state = mintOrBurnBasedOnState(e, account, assert_uint256(amount), state);
-	mintOrBurnBasedOnState(e, account, assert_uint256(amount), next_state);
-	mathint account_after = balanceOf(e, account);
+    storage initialStorage = lastStorage;
 
-	assert(account_before == account_after);
+	uint256 accountBefore = balanceOf(e, account);
+	mint(e, account, amount);
+	burn(e, account, amount);
+	assert accountBefore == balanceOf(e, account);
+
+	uint256 accountBeforeBurn = balanceOf(e, account) at initialStorage;
+	burn(e, account, amount);
+	mint(e, account, amount);
+	assert accountBeforeBurn == balanceOf(e, account);
 }
-
 
 
 //// SYSTEM STATE ////
