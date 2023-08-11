@@ -521,6 +521,9 @@ rule IncreaseAllowanceAndDecreaseAllowanceAreInverse {
 // 	assert beforeIncrease == afterDecrease;
 // }
 
+definition isMintOrBurn(method f) returns bool =
+	f.selector == sig:burn(address,uint256).selector || f.selector == sig:mint(address,uint256).selector;
+
 
 /*
 	Property: Burn after mint, or mint after burn with the same amount should not change balance of the account.
@@ -532,15 +535,15 @@ rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 
     storage initialStorage = lastStorage;
 
-	mathint account_before = balanceOf(e, account);
+	mathint accountBefore = balanceOf(e, account);
 	mint(e, account, amount);
 	burn(e, account, amount);
-	assert(account_before == balanceOf(e, account));
+	assert(accountBefore == balanceOf(e, account));
 
-	mathint account_before = balanceOf(e, account) at initialStorage;
+	mathint accountBefore = balanceOf(e, account) at initialStorage;
 	burn(e, account, amount);
 	mint(e, account, amount);
-	assert(account_before == balanceOf(e, account));
+	assert(accountBefore == balanceOf(e, account));
 }
 
 
