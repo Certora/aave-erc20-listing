@@ -522,34 +522,10 @@ rule IncreaseAllowanceAndDecreaseAllowanceAreInverse {
 // }
 
 
-
-
-
-
-/*
-    Checks if the method f is mint or burn.
-*/
-definition isMintOrBurn(method f) returns bool =
-	f.selector == sig:burn(address,uint256).selector || f.selector == sig:mint(address,uint256).selector;
-
-/*
-	The function performs mint (if state is true), otherwise performs burn and returns reverted state
-*/
-function mintOrBurnBasedOnState(env e, address account, uint256 amount, bool state) returns bool {
-	if (state) {
-		mint(e, account, amount);
-		return false;
-	} else {
-		burn(e, account, amount);
-		return true;
-	}
-}
-
 /*
 	Property: Burn after mint, or mint after burn with the same amount should not change balance of the account.
 	Notice: Rule takes the method f and according to its type chooses to perform burn or mint.
 */
-//TODO: Martin will rewrite to being boring like [IncreaseAllowanceAndDecreaseAllowanceAreInverse]
 rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 	address account;
 	uint256 amount;
