@@ -552,18 +552,19 @@ function mintOrBurnBasedOnState(env e, address account, uint256 amount, bool sta
 //TODO: Martin will rewrite to being boring like [IncreaseAllowanceAndDecreaseAllowanceAreInverse]
 rule mintOrBurn(method f) filtered {f -> isMintOrBurn(f)} {
 	address account;
-	mathint amount;
-	require(amount >= 0 && amount < max_uint256);
-	bool state = f.selector == sig:mint(address, uint256).selector;
-	env e;
-	mathint nondet_choice;
+	uint256 amount;
+
+    storage initialStorage = lastStorage;
 
 	mathint account_before = balanceOf(e, account);
-	bool next_state = mintOrBurnBasedOnState(e, account, assert_uint256(amount), state);
-	mintOrBurnBasedOnState(e, account, assert_uint256(amount), next_state);
-	mathint account_after = balanceOf(e, account);
+	mint(e, account, amount);
+	burn(e, account, amount);
+	assert(account_before == balanceOf(e, account));
 
-	assert(account_before == account_after);
+	mathint account_before = balanceOf(e, account) at initialStorage;
+	burn(e, account, amount);
+	mint(e, account, amount);
+	assert(account_before == balanceOf(e, account));
 }
 
 
